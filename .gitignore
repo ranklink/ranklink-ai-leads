@@ -1,0 +1,31 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+BE/.env
+FE/.env.local
+
+# Dependencies and build output
+node_modules/
+**/node_modules/
+BE/dist/
+FE/.next/
+FE/out/
+FE/next-env.d.ts
+FE/tsconfig.tsbuildinfo
+
+# Runtime logs and temporary data
+*.log
+*.log.*
+*.err
+tmp/
+
+# Tool and editor state
+.opencode/
+.vscode/
+.idea/
+Thumbs.db
+
+# Local scratch and planning artifact not required to build the app
+/query
+/AI_Lead_Generation_Agentic_Prototype_Spec.pdf

@@ -1,0 +1,5 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": ["AUTOMATION_PLAN.md", "WHATSAPP_INTEGRATION_PLAN.md", "README.md"],
+  "formatter": false
+}

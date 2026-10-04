@@ -1,0 +1,95 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Lead {
+  id                 String   @id @default(cuid())
+  placeId            String   @unique @db.VarChar(255)
+  name               String   @db.VarChar(255)
+  category           String?  @db.VarChar(255)
+  primaryType        String?  @db.VarChar(255)
+  address            String?  @db.Text
+  latitude           Float?
+  longitude          Float?
+  phone              String?  @db.VarChar(100)
+  internationalPhone String?  @db.VarChar(100)
+  website            String?  @db.Text
+  googleMapsUrl      String?  @db.Text
+  rating             Float?
+  reviewCount        Int      @default(0)
+  businessStatus     String?  @db.VarChar(100)
+  websiteExists      Boolean  @default(false)
+  leadScore          Int      @default(0)
+  opportunitySummary String?  @db.Text
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  reviews            Review[]
+  searches           SearchLead[]
+
+  @@index([name])
+  @@index([rating])
+  @@index([reviewCount])
+  @@index([leadScore])
+  @@index([websiteExists])
+}
+
+model Review {
+  id          String    @id @default(cuid())
+  leadId      String
+  author      String?   @db.VarChar(255)
+  rating      Float?
+  comment     String?   @db.Text
+  publishedAt DateTime?
+  createdAt   DateTime  @default(now())
+  lead        Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+}
+
+model LeadSearch {
+  id             String        @id @default(cuid())
+  keyword        String        @db.VarChar(255)
+  location       String        @db.VarChar(255)
+  radius         Int?
+  minimumRating  Float?
+  websiteFilter  WebsiteFilter @default(ANY)
+  requestedCount Int           @default(20)
+  resultCount    Int           @default(0)
+  status         SearchStatus  @default(PENDING)
+  errorMessage   String?       @db.Text
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  leads          SearchLead[]
+
+  @@index([createdAt])
+  @@index([status])
+}
+
+model SearchLead {
+  searchId String
+  leadId   String
+  search   LeadSearch @relation(fields: [searchId], references: [id], onDelete: Cascade)
+  lead     Lead       @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+
+  @@id([searchId, leadId])
+  @@index([leadId])
+}
+
+enum SearchStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum WebsiteFilter {
+  ANY
+  HAS_WEBSITE
+  NO_WEBSITE
+}

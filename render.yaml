@@ -1,0 +1,65 @@
+services:
+  - type: web
+    name: ai-leads-api
+    runtime: node
+    plan: free
+    rootDir: BE
+    buildCommand: npm ci && npx prisma generate && npm run build
+    startCommand: npm run prisma:deploy && npm run admin:create && npm start
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: GOOGLE_PLACES_API_KEY
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_BOT_USERNAME
+        sync: false
+      - key: BOOTSTRAP_EMAIL
+        sync: false
+      - key: BOOTSTRAP_PASSWORD
+        sync: false
+      - key: OUTREACH_ENABLED
+        value: "false"
+      - key: AI_PROVIDER
+        value: template
+
+  - type: worker
+    name: ai-leads-worker
+    runtime: node
+    plan: 0.5c-512mb
+    rootDir: BE
+    buildCommand: npm ci && npx prisma generate && npm run build
+    startCommand: npm run worker:start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: GOOGLE_PLACES_API_KEY
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: OUTREACH_ENABLED
+        value: "false"
+      - key: AI_PROVIDER
+        value: template
+
+  - type: web
+    name: ai-leads-frontend
+    runtime: node
+    plan: free
+    rootDir: FE
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NEXT_PUBLIC_API_URL
+        fromService:
+          name: ai-leads-api
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL

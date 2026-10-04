@@ -1,0 +1,623 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Lead {
+  id                 String   @id @default(cuid())
+  organizationId     String?
+  organization       Organization? @relation(fields: [organizationId], references: [id])
+  placeId            String   @db.VarChar(255)
+  name               String   @db.VarChar(255)
+  category           String?  @db.VarChar(255)
+  primaryType        String?  @db.VarChar(255)
+  address            String?  @db.Text
+  latitude           Float?
+  longitude          Float?
+  phone              String?  @db.VarChar(100)
+  internationalPhone String?  @db.VarChar(100)
+  website            String?  @db.Text
+  googleMapsUrl      String?  @db.Text
+  rating             Float?
+  reviewCount        Int      @default(0)
+  businessStatus     String?  @db.VarChar(100)
+  websiteExists      Boolean  @default(false)
+  leadScore          Int      @default(0)
+  opportunitySummary String?  @db.Text
+  agentVersion       Int      @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  reviews            Review[]
+  searches           SearchLead[]
+  assessments        LeadAssessment[]
+  agentJobs           AgentJob[]
+  researchSnapshots   LeadResearch[]
+  qualifications      LeadQualification[]
+  approvals           LeadApproval[]
+  contacts            LeadContact[]
+  outreachDrafts      OutreachDraft[]
+  outreachEvents      OutreachEvent[]
+  followUpPlans       FollowUpPlan[]
+
+  @@unique([organizationId, placeId])
+  @@index([organizationId, createdAt])
+  @@index([name])
+  @@index([rating])
+  @@index([reviewCount])
+  @@index([leadScore])
+  @@index([websiteExists])
+  @@map("lead")
+}
+
+model Review {
+  id          String    @id @default(cuid())
+  leadId      String
+  author      String?   @db.VarChar(255)
+  rating      Float?
+  comment     String?   @db.Text
+  publishedAt DateTime?
+  createdAt   DateTime  @default(now())
+  lead        Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+  @@map("review")
+}
+
+model LeadSearch {
+  id             String        @id @default(cuid())
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  keyword        String        @db.VarChar(255)
+  location       String        @db.VarChar(255)
+  radius         Int?
+  minimumRating  Float?
+  websiteFilter  WebsiteFilter @default(ANY)
+  requestedCount Int           @default(20)
+  resultCount    Int           @default(0)
+  status         SearchStatus  @default(PENDING)
+  errorMessage   String?       @db.Text
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  leads          SearchLead[]
+  runs           AutomationRun[]
+
+  @@index([organizationId, createdAt])
+  @@index([createdAt])
+  @@index([status])
+  @@map("leadsearch")
+}
+
+model SearchLead {
+  searchId String
+  leadId   String
+  search   LeadSearch @relation(fields: [searchId], references: [id], onDelete: Cascade)
+  lead     Lead       @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+
+  @@id([searchId, leadId])
+  @@index([leadId])
+  @@map("searchlead")
+}
+
+enum SearchStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum WebsiteFilter {
+  ANY
+  HAS_WEBSITE
+  NO_WEBSITE
+}
+
+model Organization {
+  id        String @id @default(cuid())
+  name      String @db.VarChar(200)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  users     User[]
+  leads     Lead[]
+  searches  LeadSearch[]
+  campaigns Campaign[]
+  agentJobs AgentJob[]
+  researchSnapshots LeadResearch[]
+  qualifications LeadQualification[]
+  approvals LeadApproval[]
+  contacts LeadContact[]
+  outreachDrafts OutreachDraft[]
+  outreachEvents OutreachEvent[]
+  suppressions LeadSuppression[]
+  followUpPlans FollowUpPlan[]
+  analyticsInsights AnalyticsInsight[]
+  telegramConnection TelegramConnection?
+  telegramLinkCodes TelegramLinkCode[]
+  telegramUpdates TelegramUpdate[]
+}
+
+model TelegramConnection {
+  id             String       @id @default(cuid())
+  organizationId String       @unique
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  chatId         String       @unique @db.VarChar(32)
+  telegramUserId String       @db.VarChar(32)
+  username       String?      @db.VarChar(64)
+  connectedAt    DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model TelegramLinkCode {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String       @db.VarChar(191)
+  codeHash       String       @unique @db.Char(64)
+  expiresAt      DateTime
+  usedAt         DateTime?
+  createdAt      DateTime     @default(now())
+  @@index([organizationId, expiresAt])
+}
+
+model TelegramUpdate {
+  id             String       @id @default(cuid())
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  updateId       BigInt       @unique
+  payload        Json
+  status         TelegramUpdateStatus @default(QUEUED)
+  attempts       Int          @default(0)
+  availableAt    DateTime     @default(now())
+  leaseUntil     DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  @@index([status, availableAt, leaseUntil])
+}
+
+enum TelegramUpdateStatus {
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model User {
+  id             String @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  email          String @unique @db.VarChar(254)
+  passwordHash   String @db.VarChar(255)
+  role           UserRole @default(OPERATOR)
+  disabled       Boolean @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  sessions       Session[]
+  @@index([organizationId])
+}
+
+model Session {
+  id        String @id @default(cuid())
+  tokenHash String @unique @db.Char(64)
+  userId    String
+  user      User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  @@index([expiresAt])
+}
+
+enum UserRole {
+  ADMIN
+  OPERATOR
+  VIEWER
+}
+
+model Campaign {
+  id             String @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  name           String @db.VarChar(120)
+  config         Json
+  version        Int @default(1)
+  status         CampaignStatus @default(DRAFT)
+  nextRunAt      DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  runs           AutomationRun[]
+  analyticsInsights AnalyticsInsight[]
+  @@index([organizationId, createdAt])
+  @@index([status, nextRunAt])
+}
+
+enum CampaignStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+}
+
+model AutomationRun {
+  id              String @id @default(cuid())
+  campaignId      String
+  campaign        Campaign @relation(fields: [campaignId], references: [id])
+  requestKey      String @db.VarChar(100)
+  config          Json
+  campaignVersion Int
+  status          RunStatus @default(QUEUED)
+  stage           String @default("DISCOVERY") @db.VarChar(40)
+  searchId        String?
+  search          LeadSearch? @relation(fields: [searchId], references: [id])
+  attempts        Int @default(0)
+  aiCalls         Int @default(0)
+  googleCalls     Int @default(0)
+  discoveryData   Json?
+  leaseToken      String? @db.VarChar(64)
+  leaseUntil      DateTime?
+  availableAt     DateTime @default(now())
+  errorCode       String? @db.VarChar(100)
+  errorMessage    String? @db.VarChar(500)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  finishedAt      DateTime?
+  assessments     LeadAssessment[]
+  events          RunEvent[]
+  agentJobs       AgentJob[]
+  @@unique([campaignId, requestKey])
+  @@index([status, availableAt, leaseUntil])
+}
+
+enum RunStatus {
+  QUEUED
+  RUNNING
+  WAITING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+model LeadAssessment {
+  id            String @id @default(cuid())
+  runId         String
+  run           AutomationRun @relation(fields: [runId], references: [id])
+  leadId        String
+  lead          Lead @relation(fields: [leadId], references: [id])
+  status        AssessmentStatus @default(PENDING)
+  decision      String? @db.VarChar(40)
+  reason        String? @db.Text
+  evidence      Json?
+  toolTrace     Json?
+  source        String? @db.VarChar(40)
+  subject       String? @db.VarChar(200)
+  body          String? @db.Text
+  version       Int @default(1)
+  approvedBy    String? @db.VarChar(191)
+  approvedAt    DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  agentJobs     AgentJob[]
+  @@unique([runId, leadId])
+  @@index([runId, status])
+}
+
+enum AssessmentStatus {
+  PENDING
+  REVIEW
+  APPROVED
+  REJECTED
+  ERROR
+}
+
+model RunEvent {
+  id        String @id @default(cuid())
+  runId     String
+  run       AutomationRun @relation(fields: [runId], references: [id])
+  type      String @db.VarChar(60)
+  message   String @db.VarChar(500)
+  createdAt DateTime @default(now())
+  @@index([runId, createdAt])
+}
+
+enum AgentType {
+  RESEARCH
+  QUALIFICATION
+  CONTACT_ENRICHMENT
+  OUTREACH
+  FOLLOW_UP
+  ANALYTICS
+}
+
+enum AgentJobStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum AgentRunStatus {
+  SUCCEEDED
+  FAILED
+}
+
+enum QualificationFit {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum ApprovalStage {
+  LEAD
+  OUTREACH
+}
+
+enum ApprovalDecision {
+  APPROVED
+  REJECTED
+}
+
+enum OutreachDraftStatus {
+  REVIEW
+  APPROVED
+  SENT
+  REJECTED
+}
+
+enum FollowUpStatus {
+  PROPOSED
+  APPROVED
+  CANCELLED
+  COMPLETED
+}
+
+model AgentJob {
+  id               String         @id @default(cuid())
+  organizationId   String
+  organization     Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  leadId            String?
+  lead              Lead?          @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  automationRunId   String?
+  automationRun     AutomationRun? @relation(fields: [automationRunId], references: [id], onDelete: Cascade)
+  assessmentId      String?
+  assessment        LeadAssessment? @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  type              AgentType
+  status            AgentJobStatus @default(QUEUED)
+  idempotencyKey    String         @db.VarChar(191)
+  inputJson         Json
+  attempts          Int            @default(0)
+  maxAttempts       Int            @default(3)
+  runAfter          DateTime       @default(now())
+  leaseToken        String?        @db.VarChar(64)
+  leaseUntil        DateTime?
+  errorCode         String?        @db.VarChar(100)
+  errorMessage      String?        @db.VarChar(500)
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  finishedAt        DateTime?
+  runs              AgentRun[]
+  researchSnapshots LeadResearch[]
+  qualifications    LeadQualification[]
+  contacts          LeadContact[]
+  outreachDrafts    OutreachDraft[]
+  followUpPlans     FollowUpPlan[]
+  analyticsInsights AnalyticsInsight[]
+
+  @@unique([organizationId, idempotencyKey])
+  @@index([status, runAfter, leaseUntil])
+  @@index([leadId, type, createdAt])
+  @@index([automationRunId, status])
+}
+
+model AgentRun {
+  id            String         @id @default(cuid())
+  jobId         String
+  job           AgentJob       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  status        AgentRunStatus
+  model         String         @db.VarChar(191)
+  promptVersion String         @db.VarChar(50)
+  inputJson     Json
+  outputJson    Json?
+  latencyMs     Int
+  inputTokens   Int?
+  outputTokens  Int?
+  errorCode     String?        @db.VarChar(100)
+  createdAt     DateTime       @default(now())
+
+  @@index([jobId, createdAt])
+}
+
+model LeadResearch {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  leadId         String
+  lead           Lead         @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  jobId          String
+  job            AgentJob     @relation(fields: [jobId], references: [id], onDelete: Restrict)
+  version        Int
+  summary        String       @db.Text
+  signals        Json
+  evidence       Json
+  missingFields  Json
+  confidence     Float
+  createdAt      DateTime     @default(now())
+
+  qualifications LeadQualification[]
+
+  @@unique([leadId, version])
+  @@index([organizationId, leadId, createdAt])
+}
+
+model LeadQualification {
+  id                String           @id @default(cuid())
+  organizationId    String
+  organization      Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  leadId             String
+  lead               Lead             @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  researchId         String
+  research           LeadResearch     @relation(fields: [researchId], references: [id], onDelete: Restrict)
+  jobId              String
+  job                AgentJob         @relation(fields: [jobId], references: [id], onDelete: Restrict)
+  version            Int
+  score              Int
+  fit                QualificationFit
+  reasons            Json
+  risks              Json
+  recommendedAction  String           @db.VarChar(100)
+  confidence         Float
+  rubricVersion      String           @db.VarChar(50)
+  createdAt          DateTime         @default(now())
+
+  outreachDrafts OutreachDraft[]
+
+  @@unique([leadId, version])
+  @@index([organizationId, leadId, createdAt])
+  @@index([researchId])
+}
+
+model LeadApproval {
+  id             String           @id @default(cuid())
+  organizationId String
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  leadId         String
+  lead           Lead             @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  stage          ApprovalStage
+  version        Int
+  decision       ApprovalDecision
+  userId         String
+  note           String?          @db.VarChar(1000)
+  createdAt      DateTime         @default(now())
+
+  @@unique([organizationId, leadId, stage, version])
+  @@index([leadId, stage, createdAt])
+}
+
+model LeadContact {
+  id                 String       @id @default(cuid())
+  organizationId     String
+  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  leadId              String
+  lead                Lead         @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  jobId               String?
+  job                 AgentJob?    @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  name                String?      @db.VarChar(191)
+  email               String       @db.VarChar(320)
+  role                String?      @db.VarChar(191)
+  source              String       @db.VarChar(100)
+  confidence          Float
+  verificationStatus  String?      @db.VarChar(50)
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  @@unique([organizationId, leadId, email])
+  @@index([leadId, confidence])
+}
+
+model OutreachDraft {
+  id                         String              @id @default(cuid())
+  organizationId             String
+  organization               Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  leadId                      String
+  lead                        Lead                @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  qualificationId             String
+  qualification               LeadQualification   @relation(fields: [qualificationId], references: [id], onDelete: Restrict)
+  jobId                        String
+  job                          AgentJob             @relation(fields: [jobId], references: [id], onDelete: Restrict)
+  recipientEmail               String?             @db.VarChar(320)
+  recipientName                String?             @db.VarChar(191)
+  subject                      String              @db.VarChar(200)
+  body                         String              @db.Text
+  personalizationEvidenceIds   Json
+  version                      Int
+  status                       OutreachDraftStatus @default(REVIEW)
+  approvedBy                   String?             @db.VarChar(191)
+  approvedAt                   DateTime?
+  createdAt                    DateTime            @default(now())
+  updatedAt                    DateTime            @updatedAt
+
+  events OutreachEvent[]
+  followUpPlans FollowUpPlan[]
+
+  @@unique([leadId, version])
+  @@index([organizationId, status, createdAt])
+  @@index([qualificationId])
+}
+
+model OutreachEvent {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  leadId         String
+  lead           Lead         @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  draftId        String
+  draft           OutreachDraft @relation(fields: [draftId], references: [id], onDelete: Restrict)
+  idempotencyKey String       @db.VarChar(191)
+  provider       String       @db.VarChar(50)
+  providerId     String?      @db.VarChar(191)
+  eventType      String       @db.VarChar(50)
+  payloadJson    Json?
+  occurredAt     DateTime     @default(now())
+
+  @@unique([organizationId, idempotencyKey])
+  @@index([leadId, occurredAt])
+  @@index([draftId, occurredAt])
+}
+
+model LeadSuppression {
+  id                String       @id @default(cuid())
+  organizationId    String
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  normalizedContact String       @db.VarChar(320)
+  reason            String       @db.VarChar(191)
+  source            String       @db.VarChar(100)
+  active            Boolean      @default(true)
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  @@unique([organizationId, normalizedContact])
+  @@index([organizationId, active])
+}
+
+model FollowUpPlan {
+  id             String         @id @default(cuid())
+  organizationId String
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  leadId         String
+  lead           Lead           @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  draftId        String
+  draft           OutreachDraft  @relation(fields: [draftId], references: [id], onDelete: Cascade)
+  jobId          String
+  job             AgentJob       @relation(fields: [jobId], references: [id], onDelete: Restrict)
+  version        Int
+  waitHours      Int
+  dueAt          DateTime
+  subject        String         @db.VarChar(200)
+  body           String         @db.Text
+  reason         String         @db.VarChar(1000)
+  status         FollowUpStatus @default(PROPOSED)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@unique([draftId, version])
+  @@index([organizationId, status, dueAt])
+}
+
+model AnalyticsInsight {
+  id              String       @id @default(cuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  campaignId      String?
+  campaign        Campaign?    @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  jobId           String
+  job             AgentJob     @relation(fields: [jobId], references: [id], onDelete: Restrict)
+  periodStart     DateTime
+  periodEnd       DateTime
+  summary         String       @db.Text
+  metricsJson     Json
+  recommendations Json
+  createdAt       DateTime     @default(now())
+
+  @@index([organizationId, createdAt])
+  @@index([campaignId, createdAt])
+}
