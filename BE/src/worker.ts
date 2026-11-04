@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { setTimeout as sleep } from "node:timers/promises";
 import prisma from "./config/database";
-import { authContext } from "./auth/context";
+import { requestContext } from "./context/request-context";
 import { campaignConfigSchema } from "./validators/campaign.validator";
 import { campaignRepository } from "./repositories/campaign.repository";
 import { runRepository } from "./repositories/run.repository";
@@ -20,7 +20,7 @@ async function schedule() {
   const due = await prisma.campaign.findMany({ where: { status: "ACTIVE", nextRunAt: { lte: new Date() } }, take: 20 });
   for (const campaign of due) {
     const config = campaignConfigSchema.parse(campaign.config);
-    await authContext.run({ organizationId: campaign.organizationId, userId: "worker", role: "ADMIN" }, async () => {
+    await requestContext.run({ organizationId: campaign.organizationId, userId: "worker", role: "ADMIN" }, async () => {
       try {
         await campaignRepository.enqueue(campaign.id, `schedule:${campaign.nextRunAt!.toISOString()}`);
         await prisma.campaign.updateMany({ where: { id: campaign.id, status: "ACTIVE", nextRunAt: campaign.nextRunAt }, data: { nextRunAt: nextSchedule(config.intervalHours) } });
@@ -45,7 +45,7 @@ async function main() {
         if (!job) { await sleep(2000); continue; }
         const heartbeat = setInterval(() => { void agentJobRepository.heartbeat(job).catch(() => console.error(JSON.stringify({ event: "agent_heartbeat_failed", jobId: job.id }))); }, 20_000);
         try {
-          await authContext.run({ organizationId: job.organizationId, userId: "worker", role: "ADMIN" }, () => executeAgentJob(job));
+          await requestContext.run({ organizationId: job.organizationId, userId: "worker", role: "ADMIN" }, () => executeAgentJob(job));
           await agentJobRepository.complete(job);
           await finalizeParentRun(job);
         } catch (error) {
@@ -59,7 +59,7 @@ async function main() {
         void prisma.automationRun.updateMany({ where: { id: run.id, leaseToken: run.leaseToken, status: "RUNNING", leaseUntil: { gt: new Date() } }, data: { leaseUntil: new Date(Date.now() + LEASE_MS) } }).catch(() => console.error(JSON.stringify({ event: "heartbeat_failed", runId: run.id })));
       }, 20_000);
       try {
-        await authContext.run({ organizationId: run.campaign.organizationId, userId: "worker", role: "ADMIN" }, () => executeWorkflow(run));
+        await requestContext.run({ organizationId: run.campaign.organizationId, userId: "worker", role: "ADMIN" }, () => executeWorkflow(run));
       } catch (error) {
         if (!(error instanceof RunStopped)) {
           const code = error instanceof BudgetExceeded ? "BUDGET_EXHAUSTED" : "WORKFLOW_FAILED";

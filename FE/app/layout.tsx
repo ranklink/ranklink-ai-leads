@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { QueryProvider } from "@/lib/query-provider";
 import Link from "next/link";
-import { SessionGate } from "@/components/auth/SessionGate";
 import { ToastProvider } from "@/components/ui/toast";
 import { ThemeProvider } from "@/components/theme-provider";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -47,7 +46,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <QueryProvider>
             <ToastProvider>
               <Navbar />
-              <main className="max-w-7xl mx-auto px-4 py-6"><SessionGate>{children}</SessionGate></main>
+              <main className="max-w-7xl mx-auto px-4 py-6">{children}</main>
             </ToastProvider>
           </QueryProvider>
         </ThemeProvider>

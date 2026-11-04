@@ -1,5 +1,5 @@
 import prisma from "../config/database";
-import { currentOrganization } from "../auth/context";
+import { currentOrganization } from "../context/request-context";
 import { env } from "../config/env";
 
 // Curated low-competition niches for India / global - high opportunity for agencies/freelancers

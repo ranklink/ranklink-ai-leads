@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
 import prisma from "../config/database";
-import { currentOrganization } from "../auth/context";
+import { currentOrganization } from "../context/request-context";
 import { ApiError } from "../utils/api-error";
 import type { CampaignConfig } from "../validators/campaign.validator";
 import { nextSchedule } from "../services/automation/policy";

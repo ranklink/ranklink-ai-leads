@@ -9,7 +9,7 @@ import { detectOpportunities, opportunitySummary } from "../opportunity.service"
 import { campaignConfigSchema } from "../../validators/campaign.validator";
 import { enqueueResearch } from "../agents/agent-workflow.service";
 import { BudgetExceeded, RunStopped } from "./policy";
-import { currentOrganization } from "../../auth/context";
+import { currentOrganization } from "../../context/request-context";
 
 const candidateSchema = z.array(z.string().min(1).max(255)).max(20);
 export async function executeWorkflow(run: AutomationRun & { campaign: Campaign }) {

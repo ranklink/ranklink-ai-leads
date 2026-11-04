@@ -1,4 +1,4 @@
-import { API_URL, authenticatedFetch as fetch } from "./api";
+import { API_URL, apiFetch as fetch } from "./api";
 
 export async function getDashboardStats() {
   const res = await fetch(`${API_URL}/dashboard/stats`);

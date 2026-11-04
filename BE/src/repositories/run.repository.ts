@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import prisma from "../config/database";
-import { currentOrganization, authContext } from "../auth/context";
+import { currentOrganization, requestContext } from "../context/request-context";
 import { ApiError } from "../utils/api-error";
 import { LEASE_MS, MAX_RUN_ATTEMPTS, RunStopped, BudgetExceeded } from "../services/automation/policy";
 
@@ -54,7 +54,7 @@ export const runRepository = {
     });
   },
   async review(id: string, version: number, action: "APPROVE" | "REJECT") {
-    const changed = await prisma.leadAssessment.updateMany({ where: { id, version, status: "REVIEW", run: { campaign: { organizationId: currentOrganization() } } }, data: { status: action === "APPROVE" ? "APPROVED" : "REJECTED", approvedBy: action === "APPROVE" ? authContext.getStore()!.userId : null, approvedAt: action === "APPROVE" ? new Date() : null } });
+    const changed = await prisma.leadAssessment.updateMany({ where: { id, version, status: "REVIEW", run: { campaign: { organizationId: currentOrganization() } } }, data: { status: action === "APPROVE" ? "APPROVED" : "REJECTED", approvedBy: action === "APPROVE" ? requestContext.getStore()!.userId : null, approvedAt: action === "APPROVE" ? new Date() : null } });
     if (!changed.count) throw new ApiError(409, "Draft changed or is no longer awaiting review. Reload before reviewing.");
   },
   async edit(id: string, version: number, subject: string, body: string) {

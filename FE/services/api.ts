@@ -2,10 +2,9 @@ const configuredApiUrl = process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "");
 const apiRoot = configuredApiUrl || "http://localhost:5000";
 export const API_URL = apiRoot.endsWith("/api/v1") ? apiRoot : `${apiRoot}/api/v1`;
 
-export async function authenticatedFetch(input: RequestInfo | URL, options?: RequestInit): Promise<Response> {
-  // Auth disabled — no session redirect; keep credentials for compatibility
+export async function apiFetch(input: RequestInfo | URL, options?: RequestInit): Promise<Response> {
   try {
-    const response = await fetch(input, { ...options, credentials: "include" });
+    const response = await fetch(input, options);
     if (!response.ok && typeof window !== "undefined") {
       const body = await response.clone().json().catch(() => ({}));
       window.dispatchEvent(new CustomEvent("app:toast", { detail: { variant: "error", title: "Request failed", description: body.message || `Request failed with status ${response.status}.` } }));
@@ -18,7 +17,7 @@ export async function authenticatedFetch(input: RequestInfo | URL, options?: Req
 }
 
 export async function apiRequest<T>(path: string, options?: RequestInit): Promise<T> {
-  const response = await authenticatedFetch(`${API_URL}${path}`, {
+  const response = await apiFetch(`${API_URL}${path}`, {
     ...options,
     headers: {
       "Content-Type": "application/json",

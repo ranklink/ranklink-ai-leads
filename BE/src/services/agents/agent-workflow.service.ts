@@ -1,7 +1,7 @@
 import { Prisma, type AgentJob } from "@prisma/client";
 import { z } from "zod";
 import prisma from "../../config/database";
-import { currentOrganization, authContext } from "../../auth/context";
+import { currentOrganization, requestContext } from "../../context/request-context";
 import { ApiError } from "../../utils/api-error";
 import { campaignConfigSchema } from "../../validators/campaign.validator";
 import { agentJobRepository } from "../../repositories/agent-job.repository";
@@ -250,8 +250,8 @@ export async function approveLead(input: { assessmentId: string; version: number
   const qualification = await prisma.leadQualification.findFirst({ where: { leadId: assessment.leadId, organizationId }, orderBy: { createdAt: "desc" } });
   if (!qualification || qualification.version !== input.version) throw new ApiError(409, "Qualification changed. Reload before reviewing.");
   await prisma.$transaction(async tx => {
-    await tx.leadApproval.create({ data: { organizationId, leadId: assessment.leadId, stage: "LEAD", version: qualification.version, decision: input.decision, userId: authContext.getStore()!.userId, note: input.note } });
-    await tx.leadAssessment.update({ where: { id: assessment.id }, data: { status: input.decision === "APPROVED" ? "APPROVED" : "REJECTED", approvedBy: input.decision === "APPROVED" ? authContext.getStore()!.userId : null, approvedAt: input.decision === "APPROVED" ? new Date() : null } });
+    await tx.leadApproval.create({ data: { organizationId, leadId: assessment.leadId, stage: "LEAD", version: qualification.version, decision: input.decision, userId: requestContext.getStore()!.userId, note: input.note } });
+    await tx.leadAssessment.update({ where: { id: assessment.id }, data: { status: input.decision === "APPROVED" ? "APPROVED" : "REJECTED", approvedBy: input.decision === "APPROVED" ? requestContext.getStore()!.userId : null, approvedAt: input.decision === "APPROVED" ? new Date() : null } });
   }).catch(error => { if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") throw new ApiError(409, "This qualification version has already been reviewed."); throw error; });
   if (input.decision === "APPROVED") return enqueueOutreach({ leadId: assessment.leadId, qualificationId: qualification.id, recipientEmail: input.recipientEmail ?? null, recipientName: input.recipientName ?? null, assessmentId: assessment.id, idempotencyKey: `outreach:${assessment.id}:${qualification.version}` });
   return null;
@@ -265,8 +265,8 @@ export async function approveDraft(input: { draftId: string; version: number; de
   if (draft.version !== input.version || draft.status !== "REVIEW") throw new ApiError(409, "Draft changed or is no longer awaiting review.");
   if (input.decision === "APPROVED" && !draft.recipientEmail) throw new ApiError(422, "Add a verified recipient email before approval.");
   await prisma.$transaction([
-    prisma.outreachDraft.update({ where: { id: draft.id }, data: { status, approvedBy: input.decision === "APPROVED" ? authContext.getStore()!.userId : null, approvedAt: input.decision === "APPROVED" ? new Date() : null } }),
-    prisma.leadApproval.create({ data: { organizationId, leadId: draft.leadId, stage: "OUTREACH", version: draft.version, decision: input.decision, userId: authContext.getStore()!.userId, note: input.note } }),
+    prisma.outreachDraft.update({ where: { id: draft.id }, data: { status, approvedBy: input.decision === "APPROVED" ? requestContext.getStore()!.userId : null, approvedAt: input.decision === "APPROVED" ? new Date() : null } }),
+    prisma.leadApproval.create({ data: { organizationId, leadId: draft.leadId, stage: "OUTREACH", version: draft.version, decision: input.decision, userId: requestContext.getStore()!.userId, note: input.note } }),
   ]).catch(error => { if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") throw new ApiError(409, "This draft version has already been reviewed."); throw error; });
 }
 
@@ -353,7 +353,7 @@ export async function processDueFollowUps() {
   let processed = 0;
   for (const plan of plans) {
     try {
-      await authContext.run({ organizationId: plan.organizationId, userId: "worker", role: "ADMIN" }, () => sendFollowUpPlan(plan.id, `follow-up-send:${plan.id}:${plan.version}`));
+      await requestContext.run({ organizationId: plan.organizationId, userId: "worker", role: "ADMIN" }, () => sendFollowUpPlan(plan.id, `follow-up-send:${plan.id}:${plan.version}`));
       processed += 1;
     } catch (error) {
       console.error(JSON.stringify({ event: "follow_up_send_failed", planId: plan.id, error: error instanceof Error ? error.message : "UNKNOWN" }));

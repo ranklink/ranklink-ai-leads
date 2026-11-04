@@ -1,6 +1,6 @@
 import { Router } from "express";
 import prisma from "../config/database";
-import { currentOrganization } from "../auth/context";
+import { currentOrganization } from "../context/request-context";
 import { asyncHandler } from "../utils/async-handler";
 import { ApiError } from "../utils/api-error";
 import { analyticsJobSchema, draftReviewSchema, draftUpdateSchema, idempotencyKeySchema, leadReviewSchema, queueResearchSchema, suppressionSchema } from "../validators/agent.validator";
@@ -58,4 +58,3 @@ router.post("/analytics/agent-jobs", asyncHandler(async (req, res) => {
 }));
 
 export default router;
-

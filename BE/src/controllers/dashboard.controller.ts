@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import prisma from "../config/database";
 import { searchRepository } from "../repositories/search.repository";
-import { currentOrganization } from "../auth/context";
+import { currentOrganization } from "../context/request-context";
 
 export async function getDashboardStats(_req: Request, res: Response) {
   const [totalLeads, hotLeads, withoutWebsite, searchesThisMonth] = await Promise.all([
