@@ -56,18 +56,18 @@ export function NicheSuggestions({ locationValue, onSelectNiche, onLocationChang
   const data = query.data;
 
   return (
-    <Card className="border-violet-200 bg-gradient-to-br from-violet-50/50 to-indigo-50/30 overflow-hidden">
-      <CardHeader className="pb-3">
+    <Card className="lead-niche-panel overflow-hidden">
+      <CardHeader className="lead-niche-header pb-3">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <CardTitle className="flex items-center gap-2 text-base md:text-lg">
-              <span className="p-2 rounded-lg bg-violet-600 text-white">
+            <CardTitle className="lead-niche-heading flex items-center gap-2 text-base md:text-lg">
+              <span className="lead-niche-mark p-2 rounded-lg text-white">
                 <Sparkles className="w-4 h-4" />
               </span>
               AI Niche Finder
-              <Badge className="bg-violet-600 text-white ml-1 text-[10px]">BETA</Badge>
+              <Badge className="lead-niche-beta ml-1 text-[10px]">BETA</Badge>
             </CardTitle>
-            <CardDescription className="mt-1.5 text-xs md:text-sm max-w-2xl">
+            <CardDescription className="lead-niche-description mt-1.5 text-xs md:text-sm max-w-2xl">
               Discover <span className="font-semibold text-violet-700">best & low-competition</span> niches for <span className="font-medium">{data?.location || loc}</span>. Based on {data?.totalLeadsAnalyzed ?? "—"} leads analyzed. Green = low saturation = higher win-rate.
             </CardDescription>
           </div>
@@ -76,9 +76,9 @@ export function NicheSuggestions({ locationValue, onSelectNiche, onLocationChang
           </div>
         </div>
 
-        <div className="flex flex-col md:flex-row gap-3 mt-4">
+        <div className="lead-niche-controls flex flex-col md:flex-row gap-3 mt-4">
           <div className="flex-1 space-y-1.5">
-            <Label className="text-xs">Location for analysis</Label>
+            <Label className="lead-niche-label text-xs">Location for analysis</Label>
             <div className="flex gap-2">
               <div className="relative flex-1">
                 <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -89,14 +89,14 @@ export function NicheSuggestions({ locationValue, onSelectNiche, onLocationChang
                     onLocationChange?.(e.target.value);
                   }}
                   placeholder="Bengaluru, Karnataka"
-                  className="pl-9 bg-white"
+                  className="lead-niche-input pl-9"
                 />
               </div>
               <Button
                 variant="outline"
                 onClick={() => query.refetch()}
                 disabled={query.isFetching}
-                className="bg-white"
+                className="lead-niche-analyze"
               >
                 {query.isFetching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
                 <span className="hidden sm:inline ml-2">Analyze</span>
@@ -112,8 +112,8 @@ export function NicheSuggestions({ locationValue, onSelectNiche, onLocationChang
             </div>}
           </div>
           <div className="space-y-1.5 md:w-48">
-            <Label className="text-xs">Filter</Label>
-            <Select value={filter} onChange={(e) => setFilter(e.target.value)} className="bg-white">
+            <Label className="lead-niche-label text-xs">Filter</Label>
+            <Select value={filter} onChange={(e) => setFilter(e.target.value)} className="lead-niche-input">
               <option value="ALL">All (best first)</option>
               <option value="LOW">Low competition only</option>
               <option value="MEDIUM">Low + Medium</option>
@@ -133,15 +133,15 @@ export function NicheSuggestions({ locationValue, onSelectNiche, onLocationChang
         )}
       </CardHeader>
 
-      <CardContent>
+      <CardContent className="lead-niche-content">
         {isCanada && !scope ? <p className="text-sm text-amber-700 rounded-md border border-amber-200 bg-amber-50 p-3">Select a Canadian province or territory to analyze a focused market.</p> : query.isLoading ? (
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3 animate-pulse">
+          <div className="lead-niche-skeleton grid md:grid-cols-2 lg:grid-cols-3 gap-3 animate-pulse">
             {Array.from({ length: 6 }).map((_, i) => (
               <div key={i} className="h-36 rounded-xl bg-muted" />
             ))}
           </div>
         ) : query.isError ? (
-          <p className="text-sm text-red-500">{(query.error as Error).message}</p>
+          <p className="lead-niche-error text-sm" role="alert">{(query.error as Error).message}</p>
         ) : (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
             {data?.suggestions.map((s: NicheSuggestion) => {
@@ -150,13 +150,13 @@ export function NicheSuggestions({ locationValue, onSelectNiche, onLocationChang
               return (
               <div
                 key={s.niche}
-                className={`relative group rounded-xl border p-4 hover:shadow-md transition-all flex flex-col ${isSearched ? "bg-violet-50/70 border-violet-300 shadow-sm" : "bg-white hover:border-violet-200"}`}
+                className={`lead-niche-suggestion relative group rounded-xl border p-4 hover:shadow-md transition-all flex flex-col ${isSearched ? "is-searched bg-violet-50/70 border-violet-300 shadow-sm" : "bg-white hover:border-violet-200"}`}
               >
                 {isSearched && (
                   <span className="absolute -top-2 -right-2 text-[10px] px-2 py-0.5 rounded-full bg-violet-600 text-white flex items-center gap-1 shadow"><CheckCircle2 className="w-3 h-3" /> Searched</span>
                 )}
                 <div className="flex items-start justify-between gap-2 mb-2">
-                  <h4 className="font-semibold text-sm leading-tight line-clamp-1">{s.niche}</h4>
+                  <h4 className="lead-niche-card-title font-semibold text-sm leading-tight line-clamp-1">{s.niche}</h4>
                   <Badge className={`text-[10px] px-2 py-0.5 shrink-0 ${competitionColor(s.competition)}`}>
                     <span className="flex items-center gap-1">
                       {competitionIcon(s.competition)} {s.competition}
@@ -202,7 +202,7 @@ export function NicheSuggestions({ locationValue, onSelectNiche, onLocationChang
                         <History className="w-3 h-3 mr-1" />View
                       </Button>
                     )}
-                    <Button size="sm" className="h-7 text-xs bg-violet-600 hover:bg-violet-700" onClick={() => onSelectNiche(s.niche)}>
+                    <Button size="sm" className="lead-niche-use-button h-7 text-xs" onClick={() => onSelectNiche(s.niche)}>
                       {isSearched ? "Search again" : "Use niche"}
                     </Button>
                   </div>
