@@ -28,4 +28,4 @@ COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/dist ./dist
 
 EXPOSE 5000
-CMD ["npm", "start"]
+CMD ["npm", "run", "start:migrate"]
