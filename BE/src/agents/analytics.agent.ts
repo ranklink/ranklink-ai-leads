@@ -1,6 +1,10 @@
 import type { AgentJob } from "@prisma/client";
 import { executeStructuredAgent } from "./core/structured-agent";
-import { analyticsInputSchema, analyticsOutputSchema, type AnalyticsInput } from "./schemas";
+import { analyticsInputSchema, analyticsOutputSchema, type AnalyticsInput, type AnalyticsOutput } from "./schemas";
+
+export function fallbackAnalytics(value: AnalyticsInput): AnalyticsOutput {
+  return { summary: `The reporting period contains ${value.metrics.leads ?? 0} leads and ${value.metrics.sent ?? 0} sent messages.`, recommendations: ["Review qualification and reply outcomes before changing automation thresholds."] };
+}
 
 export async function runAnalyticsAgent(job: AgentJob, input: AnalyticsInput) {
   return executeStructuredAgent(job, input, {
@@ -8,6 +12,6 @@ export async function runAnalyticsAgent(job: AgentJob, input: AnalyticsInput) {
     inputSchema: analyticsInputSchema,
     outputSchema: analyticsOutputSchema,
     systemPrompt: "You summarize supplied aggregate funnel metrics. Do not infer causality, change rules, expose personal data, or recommend higher send volume without evidence. Clearly distinguish observations from suggestions. Return JSON only.",
-    fallback: value => ({ summary: `The reporting period contains ${value.metrics.leads ?? 0} leads and ${value.metrics.sent ?? 0} sent messages.`, recommendations: ["Review qualification and reply outcomes before changing automation thresholds."] }),
+    fallback: fallbackAnalytics,
   });
 }

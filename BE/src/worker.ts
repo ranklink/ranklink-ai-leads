@@ -13,6 +13,7 @@ import { processDueFollowUps } from "./services/agents/agent-workflow.service";
 import { pollTelegramUpdates, processDueTelegramUpdate } from "./services/telegram.service";
 
 let stopping = false;
+let preferAgentJobs = false;
 process.on("SIGTERM", () => { stopping = true; });
 process.on("SIGINT", () => { stopping = true; });
 
@@ -37,24 +38,45 @@ async function main() {
     try {
       await schedule();
       await processDueFollowUps();
-      await pollTelegramUpdates();
-      await processDueTelegramUpdate();
-      const run = await runRepository.claim();
-      if (!run) {
-        const job = await agentJobRepository.claim();
-        if (!job) { await sleep(2000); continue; }
+      if (process.env.DISABLE_TELEGRAM_POLLING !== "true") {
+        await pollTelegramUpdates();
+        await processDueTelegramUpdate();
+      }
+
+      const preferAgent = preferAgentJobs;
+      preferAgentJobs = !preferAgentJobs;
+      let run: Awaited<ReturnType<typeof runRepository.claim>> = null;
+      let job: Awaited<ReturnType<typeof agentJobRepository.claim>> = null;
+      if (preferAgent) {
+        job = await agentJobRepository.claim();
+        if (!job) run = await runRepository.claim();
+      } else {
+        run = await runRepository.claim();
+        if (!run) job = await agentJobRepository.claim();
+      }
+
+      if (job) {
         const heartbeat = setInterval(() => { void agentJobRepository.heartbeat(job).catch(() => console.error(JSON.stringify({ event: "agent_heartbeat_failed", jobId: job.id }))); }, 20_000);
         try {
           await requestContext.run({ organizationId: job.organizationId, userId: "worker", role: "ADMIN" }, () => executeAgentJob(job));
           await agentJobRepository.complete(job);
-          await finalizeParentRun(job);
         } catch (error) {
           const code = error instanceof Error && /^[A-Z0-9_]+$/.test(error.message) ? error.message : "AGENT_EXECUTION_FAILED";
-          await agentJobRepository.fail(job, code);
+          try {
+            await agentJobRepository.fail(job, code);
+          } catch {
+            console.error(JSON.stringify({ event: "agent_job_failure_update_failed", jobId: job.id }));
+          }
           console.error(JSON.stringify({ event: "agent_job_failed", jobId: job.id, type: job.type, code }));
         } finally { clearInterval(heartbeat); }
+        try {
+          await finalizeParentRun(job);
+        } catch {
+          console.error(JSON.stringify({ event: "agent_parent_run_finalization_failed", jobId: job.id, runId: job.automationRunId }));
+        }
         continue;
       }
+      if (!run) { await sleep(2000); continue; }
       const heartbeat = setInterval(() => {
         void prisma.automationRun.updateMany({ where: { id: run.id, leaseToken: run.leaseToken, status: "RUNNING", leaseUntil: { gt: new Date() } }, data: { leaseUntil: new Date(Date.now() + LEASE_MS) } }).catch(() => console.error(JSON.stringify({ event: "heartbeat_failed", runId: run.id })));
       }, 20_000);

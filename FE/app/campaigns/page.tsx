@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { automationApi } from "@/services/automation.service";
 import type { Campaign, CampaignConfig } from "@/types/automation";
 import { useToast } from "@/components/ui/toast";
+import Link from "next/link";
 
 function requestKey(prefix: string) {
   return `${prefix}:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`;
@@ -71,22 +72,37 @@ export default function CampaignsPage() {
       <Card>
         <CardHeader>
           <CardTitle>Integration readiness</CardTitle>
-          <CardDescription>These checks are read-only and reflect backend configuration.</CardDescription>
+          <CardDescription>Read-only checks from the backend. Configure missing services in Settings.</CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-3 sm:grid-cols-3">
-          <Readiness label="NVIDIA model" ready={configuration.data?.aiConfigured ?? false} value={configuration.data?.aiProvider || "unknown"} />
-          <Readiness label="Google Places" ready={configuration.data?.googleConfigured ?? false} value={configuration.data?.googleConfigured ? "Configured" : "Not configured"} />
-          <Readiness label="Outbound mailbox" ready={configuration.data?.outboundConfigured ?? false} value={configuration.data?.outboundConfigured ? "Hunter ready" : "Disabled"} />
+        <CardContent className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <Readiness label="AI drafting" ready={configuration.data?.aiConfigured ?? false} value={configuration.data?.aiConfigured ? "NVIDIA model ready" : `${configuration.data?.aiProvider || "unknown"} fallback`} detail={configuration.data?.aiConfigured ? "Model-backed drafts enabled" : "Template output only"} />
+          <Readiness label="Lead discovery" ready={configuration.data?.googleConfigured ?? false} value={configuration.data?.googleConfigured ? "Google Places ready" : "Not configured"} detail="Business discovery and place data" />
+          <Readiness label="Contact lookup" ready={configuration.data?.hunterConfigured ?? false} value={configuration.data?.hunterConfigured ? "Hunter configured" : "Not configured"} detail="Contact enrichment and verification" />
+          <Readiness label="Email sending" ready={configuration.data?.outboundConfigured ?? false} value={configuration.data?.outboundConfigured ? "Enabled" : "Disabled"} detail={configuration.data?.hunterMailboxConfigured ? "Hunter mailbox connected" : "Hunter mailbox setup required"} />
         </CardContent>
+        {configuration.data?.outboundBlockers.length ? <div className="mx-6 mb-6 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm">
+          <p className="font-medium">Sending is locked</p>
+          <ul className="mt-2 list-disc space-y-1 pl-5">{configuration.data.outboundBlockers.map(item => <li key={item}>{item}</li>)}</ul>
+          <Link href="/settings#outreach-setup" className="mt-3 inline-block font-medium text-primary underline underline-offset-4">View cold email setup</Link>
+        </div> : null}
       </Card>
 
-      {showForm && <CampaignForm campaign={editing} onSave={async input => { await save.mutateAsync(input); }} onCancel={() => { setShowForm(false); setEditing(undefined); }} />}
+      {showForm && <CampaignForm campaign={editing} aiReady={configuration.data?.aiConfigured ?? false} outboundReady={configuration.data?.outboundConfigured ?? false} onSave={async input => { await save.mutateAsync(input); }} onCancel={() => { setShowForm(false); setEditing(undefined); }} />}
 
       <Card>
         <CardHeader><CardTitle>Saved campaigns</CardTitle><CardDescription>{campaigns.data?.total ?? 0} campaign{campaigns.data?.total === 1 ? "" : "s"}</CardDescription></CardHeader>
         <CardContent>
           {campaigns.isLoading && <p className="text-sm text-muted-foreground">Loading campaigns…</p>}
-          {!campaigns.isLoading && !campaigns.data?.items.length && <p className="text-sm text-muted-foreground">No campaigns yet. Create one to start lead discovery.</p>}
+          {!campaigns.isLoading && !campaigns.data?.items.length && <div className="rounded-lg border border-dashed p-6">
+            <h3 className="font-semibold">Start with a draft-only campaign</h3>
+            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Define a target, location, approved offer, and qualification rules. The agent will prepare work for review; it will not email anyone.</p>
+            <ol className="mt-4 grid gap-2 text-sm text-muted-foreground sm:grid-cols-3">
+              <li><span className="font-medium text-foreground">1.</span> Configure AI and lead sources in Settings.</li>
+              <li><span className="font-medium text-foreground">2.</span> Save a campaign in draft-only mode.</li>
+              <li><span className="font-medium text-foreground">3.</span> Activate it, then start a manual run.</li>
+            </ol>
+            <Button className="mt-5" onClick={openCreate}>Create first campaign</Button>
+          </div>}
           <div className="space-y-3">
             {campaigns.data?.items.map(campaign => <CampaignRow key={campaign.id} campaign={campaign} busy={action.isPending} onEdit={() => openEdit(campaign)} onAction={type => action.mutate({ type, campaign })} />)}
           </div>
@@ -96,8 +112,8 @@ export default function CampaignsPage() {
   );
 }
 
-function Readiness({ label, ready, value }: { label: string; ready: boolean; value: string }) {
-  return <div className="rounded-lg border p-3"><p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p><div className="mt-2 flex items-center justify-between gap-2"><span className="text-sm font-medium">{value}</span><span className={`h-2.5 w-2.5 rounded-full ${ready ? "bg-emerald-500" : "bg-amber-500"}`} aria-label={ready ? "ready" : "not ready"} /></div></div>;
+function Readiness({ label, ready, value, detail }: { label: string; ready: boolean; value: string; detail: string }) {
+  return <div className="rounded-lg border p-3"><div className="flex items-center justify-between gap-2"><p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p><span className={`h-2.5 w-2.5 rounded-full ${ready ? "bg-emerald-500" : "bg-amber-500"}`} aria-label={ready ? "ready" : "not ready"} /></div><p className="mt-2 text-sm font-semibold">{value}</p><p className="mt-1 text-xs text-muted-foreground">{detail}</p></div>;
 }
 
 function CampaignRow({ campaign, busy, onEdit, onAction }: { campaign: Campaign; busy: boolean; onEdit: () => void; onAction: (type: "activate" | "pause" | "start") => void }) {

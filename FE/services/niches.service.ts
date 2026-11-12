@@ -3,15 +3,20 @@ import { API_URL, apiFetch as fetch } from "./api";
 export interface NicheSuggestion {
   niche: string;
   category: string;
-  competition: "LOW" | "MEDIUM" | "HIGH";
-  competitionScore: number;
-  opportunityScore: number;
+  dataSource: "LOCAL" | "CURATED";
+  confidence: "LOW" | "MEDIUM" | "HIGH";
+  competition: "LOW" | "MEDIUM" | "HIGH" | "UNKNOWN";
+  competitionScore: number | null;
+  opportunityScore: number | null;
   metrics: {
     count: number;
     avgRating: number | null;
-    avgReviewCount: number;
-    withoutWebsitePct: number;
-    avgLeadScore: number;
+    avgReviewCount: number | null;
+    withoutWebsitePct: number | null;
+    avgLeadScore: number | null;
+    ratedCount: number | null;
+    lowRatedCount: number | null;
+    lowRatedPct: number | null;
   };
   reason: string;
   tags: string[];

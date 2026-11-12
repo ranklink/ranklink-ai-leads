@@ -1,9 +1,9 @@
 import prisma from "../config/database";
 import { currentOrganization } from "../context/request-context";
-import { env } from "../config/env";
 
-// Curated low-competition niches for India / global - high opportunity for agencies/freelancers
-// Each has baseline demand and typical website gap. Used as fallback + blended with DB signals.
+const LOW_RATING_THRESHOLD = 3.5;
+
+// Curated ideas are hypotheses only; they do not contribute local market metrics.
 export interface CuratedNiche {
   niche: string;
   category: string;
@@ -49,15 +49,20 @@ const CURATED_NICHES: CuratedNiche[] = [
 export interface NicheSuggestion {
   niche: string;
   category: string;
-  competition: "LOW" | "MEDIUM" | "HIGH";
-  competitionScore: number; // 0-100, lower = less competition = better
-  opportunityScore: number; // 0-100 higher = more opportunity
+  dataSource: "LOCAL" | "CURATED";
+  confidence: "LOW" | "MEDIUM" | "HIGH";
+  competition: "LOW" | "MEDIUM" | "HIGH" | "UNKNOWN";
+  competitionScore: number | null;
+  opportunityScore: number | null;
   metrics: {
     count: number;
     avgRating: number | null;
-    avgReviewCount: number;
-    withoutWebsitePct: number;
-    avgLeadScore: number;
+    avgReviewCount: number | null;
+    withoutWebsitePct: number | null;
+    avgLeadScore: number | null;
+    ratedCount: number | null;
+    lowRatedCount: number | null;
+    lowRatedPct: number | null;
   };
   reason: string;
   tags: string[];
@@ -106,13 +111,13 @@ export class NicheSuggestionService {
     }
 
     // 2. Aggregate by category/primaryType
-    const groups = new Map<string, { count: number; sumRating: number; ratedCount: number; sumReviews: number; noWebsite: number; sumScore: number; niche: string; category: string; tags: string[]; demand: string }>();
+    const groups = new Map<string, { count: number; sumRating: number; ratedCount: number; lowRatedCount: number; sumReviews: number; noWebsite: number; sumScore: number; niche: string; category: string; tags: string[]; demand: string }>();
 
-    // Initialize with curated niches so even empty DB returns suggestions
+    // Seed curated ideas, but keep them separate from observed local data.
     for (const c of CURATED_NICHES) {
       const key = (c.category || c.niche).toLowerCase();
       if (!groups.has(key)) {
-        groups.set(key, { count: 0, sumRating: 0, ratedCount: 0, sumReviews: 0, noWebsite: 0, sumScore: 0, niche: c.niche, category: c.category, tags: c.tags, demand: c.demand });
+        groups.set(key, { count: 0, sumRating: 0, ratedCount: 0, lowRatedCount: 0, sumReviews: 0, noWebsite: 0, sumScore: 0, niche: c.niche, category: c.category, tags: c.tags, demand: c.demand });
       }
     }
 
@@ -129,89 +134,89 @@ export class NicheSuggestionService {
       if (!groups.has(key)) {
         // derive display niche from raw
         const display = raw.replace(/_/g, " ").replace(/\b\w/g, (m: string) => m.toUpperCase());
-        groups.set(key, { count: 0, sumRating: 0, ratedCount: 0, sumReviews: 0, noWebsite: 0, sumScore: 0, niche: display, category: raw, tags: [], demand: "Local demand" });
+        groups.set(key, { count: 0, sumRating: 0, ratedCount: 0, lowRatedCount: 0, sumReviews: 0, noWebsite: 0, sumScore: 0, niche: display, category: raw, tags: [], demand: "Local demand" });
       }
       const g = groups.get(key)!;
       g.count += 1;
-      if (l.rating !== null && l.rating !== undefined) { g.sumRating += l.rating; g.ratedCount += 1; }
+      if (l.rating !== null && l.rating !== undefined) {
+        g.sumRating += l.rating;
+        g.ratedCount += 1;
+        if (l.rating <= LOW_RATING_THRESHOLD) g.lowRatedCount += 1;
+      }
       g.sumReviews += l.reviewCount ?? 0;
       if (!l.websiteExists) g.noWebsite += 1;
       g.sumScore += l.leadScore ?? 0;
     }
 
-    // Add unknown curated that still have 0 count -> keep them but give synthetic metrics
-    const maxCount = Math.max(...Array.from(groups.values()).map((g) => g.count), 1);
+    const maxObservedCount = Math.max(...Array.from(groups.values()).map((g) => g.count), 0);
 
     const suggestions: NicheSuggestion[] = Array.from(groups.values()).map((g) => {
+      const curatedOnly = g.count === 0;
+      const confidence: NicheSuggestion["confidence"] = g.ratedCount >= 10 ? "HIGH" : g.ratedCount >= 3 ? "MEDIUM" : "LOW";
       const avgRating = g.ratedCount ? Number((g.sumRating / g.ratedCount).toFixed(2)) : null;
-      const avgReviewCount = g.count ? Math.round(g.sumReviews / g.count) : 25; // fallback
-      const withoutWebsitePct = g.count ? Math.round((g.noWebsite / g.count) * 100) : 65; // curated assumption
-      const avgLeadScore = g.count ? Math.round(g.sumScore / g.count) : 72;
+      const lowRatedPct = g.ratedCount ? Math.round((g.lowRatedCount / g.ratedCount) * 100) : null;
+      const avgReviewCount = g.count ? Math.round(g.sumReviews / g.count) : null;
+      const withoutWebsitePct = g.count ? Math.round((g.noWebsite / g.count) * 100) : null;
+      const avgLeadScore = g.count ? Math.round(g.sumScore / g.count) : null;
+      const enoughEvidence = g.count >= 3 && g.ratedCount >= 3;
+      const market = enoughEvidence
+        ? competitionFromCount(g.count, maxObservedCount)
+        : { level: "UNKNOWN" as const, score: null };
 
-      const { level, score: competitionScore } = competitionFromCount(g.count, maxCount);
-
-      // Blend curated hint if count==0
-      let finalLevel = level;
-      let finalScore = competitionScore;
-      if (g.count === 0) {
-        const curated = CURATED_NICHES.find((c) => c.category.toLowerCase() === g.category.toLowerCase() || c.niche === g.niche);
-        if (curated) {
-          if (curated.avgCompetitionHint === "LOW") { finalLevel = "LOW"; finalScore = 18 + Math.random() * 12; }
-          else if (curated.avgCompetitionHint === "MEDIUM") { finalLevel = "MEDIUM"; finalScore = 45 + Math.random() * 15; }
-          else { finalLevel = "HIGH"; finalScore = 75 + Math.random() * 10; }
-        }
+      let opportunityScore: number | null = null;
+      if (enoughEvidence && lowRatedPct !== null && withoutWebsitePct !== null && avgLeadScore !== null && market.score !== null) {
+        const withoutWebsiteFactor = withoutWebsitePct / 100;
+        const lowRatingFactor = lowRatedPct / 100;
+        const competitionGap = 1 - market.score / 100;
+        const leadScoreFactor = avgLeadScore / 100;
+        opportunityScore = Math.round((lowRatingFactor * 0.4 + withoutWebsiteFactor * 0.25 + competitionGap * 0.2 + leadScoreFactor * 0.15) * 100);
       }
 
-      // opportunityScore: higher when low competition, high without website %, low avg reviews, high avgLeadScore
-      const withoutWebsiteFactor = withoutWebsitePct / 100; // 0..1
-      const reviewGap = Math.max(0, 1 - avgReviewCount / 100); // fewer reviews = higher gap
-      const competitionGap = 1 - finalScore / 100;
-      const leadScoreFactor = avgLeadScore / 100;
-      const opportunityScore = Math.round((withoutWebsiteFactor * 0.35 + reviewGap * 0.25 + competitionGap * 0.25 + leadScoreFactor * 0.15) * 100);
-
-      // Build reason
-      let reason = "";
-      if (g.count === 0) {
+      let reason: string;
+      if (curatedOnly) {
         const curated = CURATED_NICHES.find((c) => c.niche === g.niche);
-        reason = curated ? curated.reason : "Few businesses have strong online presence - outreach will stand out";
+        reason = `Niche hypothesis only; no local businesses in your saved data yet. ${curated?.reason ?? "Search this niche to collect local evidence."}`;
+      } else if (!enoughEvidence) {
+        reason = `Only ${g.ratedCount} local competitor${g.ratedCount === 1 ? " has" : "s have"} a rating; collect at least 3 rated places before comparing low-rating opportunity.`;
       } else {
-        reason = `${g.count} competitors found • ${withoutWebsitePct}% without websites • Avg ${avgReviewCount} reviews${avgRating ? ` • ${avgRating}★ avg` : ""} → ${finalLevel === "LOW" ? "low saturation" : finalLevel === "MEDIUM" ? "moderate competition" : "crowded but website gap persists"}`;
+        reason = `${g.lowRatedCount} of ${g.ratedCount} rated places are ≤${LOW_RATING_THRESHOLD}★ (${lowRatedPct}%) • ${withoutWebsitePct}% lack websites • ${market.level.toLowerCase()} observed market crowding`;
       }
 
       return {
         niche: g.niche,
         category: g.category,
-        competition: finalLevel,
-        competitionScore: Math.round(finalScore),
+        dataSource: curatedOnly ? "CURATED" : "LOCAL",
+        confidence,
+        competition: market.level,
+        competitionScore: market.score === null ? null : Math.round(market.score),
         opportunityScore,
-        metrics: {
-          count: g.count,
-          avgRating,
-          avgReviewCount,
-          withoutWebsitePct,
-          avgLeadScore,
-        },
+        metrics: { count: g.count, avgRating: curatedOnly ? null : avgRating, avgReviewCount, withoutWebsitePct, avgLeadScore, lowRatedCount: curatedOnly || !g.ratedCount ? null : g.lowRatedCount, lowRatedPct: curatedOnly ? null : lowRatedPct, ratedCount: curatedOnly ? null : g.ratedCount },
         reason,
         tags: g.tags,
         demand: g.demand,
       };
     });
 
-    // Optional: if OPENAI_API_KEY set, we could enhance with LLM re-ranking (keep heuristic as fallback)
-    // For now heuristic is the AI; LLM integration can be added later without breaking API
-    if (env.GOOGLE_PLACES_API_KEY && process.env.OPENAI_API_KEY) {
-      // Future: call OpenAI to re-rank or generate niche descriptions. Skipped to avoid latency/cost for MVP.
-    }
-
-    // Sort by opportunityScore desc, competitionScore asc
-    suggestions.sort((a, b) => b.opportunityScore - a.opportunityScore || a.competitionScore - b.competitionScore);
+    // Scored local evidence first; remaining local samples precede curated ideas.
+    suggestions.sort((a, b) => {
+      const aScored = a.dataSource === "LOCAL" && a.opportunityScore !== null;
+      const bScored = b.dataSource === "LOCAL" && b.opportunityScore !== null;
+      if (aScored !== bScored) return aScored ? -1 : 1;
+      if (aScored && bScored) {
+        return (b.opportunityScore! - a.opportunityScore!) ||
+          ((a.competitionScore ?? 101) - (b.competitionScore ?? 101)) ||
+          a.niche.localeCompare(b.niche);
+      }
+      if (a.dataSource !== b.dataSource) return a.dataSource === "LOCAL" ? -1 : 1;
+      return a.niche.localeCompare(b.niche);
+    });
 
     // Filter if minCompetition requested? e.g., only LOW
     let filtered = suggestions;
     if (params.minCompetition) {
       const want = params.minCompetition.toUpperCase();
       if (want === "LOW") filtered = filtered.filter((s) => s.competition === "LOW");
-      else if (want === "MEDIUM") filtered = filtered.filter((s) => s.competition !== "HIGH");
+      else if (want === "MEDIUM") filtered = filtered.filter((s) => s.competition === "LOW" || s.competition === "MEDIUM");
     }
 
     const top = filtered.slice(0, limit);
@@ -221,8 +226,8 @@ export class NicheSuggestionService {
       totalLeadsAnalyzed: totalAnalyzed,
       suggestions: top,
       insights: {
-        hotNiches: suggestions.filter((s) => s.competition === "LOW").slice(0, 3).map((s) => s.niche),
-        saturated: suggestions.filter((s) => s.competition === "HIGH").slice(0, 3).map((s) => s.niche),
+        hotNiches: suggestions.filter((s) => s.dataSource === "LOCAL" && s.opportunityScore !== null && s.competition === "LOW").slice(0, 3).map((s) => s.niche),
+        saturated: suggestions.filter((s) => s.dataSource === "LOCAL" && s.competitionScore !== null && s.competition === "HIGH").slice(0, 3).map((s) => s.niche),
       },
       generatedAt: new Date().toISOString(),
     };

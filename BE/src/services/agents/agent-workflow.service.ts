@@ -14,6 +14,10 @@ import { runAnalyticsAgent } from "../../agents/analytics.agent";
 import { findContacts, sendEmail } from "../hunter.service";
 import { env } from "../../config/env";
 import type { ResearchInput } from "../../agents/schemas";
+import { getParentRunFinalization } from "./parent-run-finalization";
+import { buildAnalyticsMetricFilters } from "./analytics-metric-filters";
+import { nextAgentJobInput, requiresManualOutputReview, usesVersionedAgentOutput } from "./agent-job-retry";
+import { dispatchAgentJob, type AgentJobExecutors } from "./agent-job-dispatch";
 
 const researchJobInputSchema = z.object({ campaignId: z.string().min(1), version: z.number().int().positive() }).strict();
 const qualificationJobInputSchema = z.object({ campaignId: z.string().min(1), researchId: z.string().min(1), version: z.number().int().positive() }).strict();
@@ -213,34 +217,147 @@ async function executeFollowUp(job: AgentJob) {
 async function executeAnalytics(job: AgentJob) {
   const input = analyticsJobInputSchema.parse(job.inputJson);
   const periodStart = new Date(input.periodStart); const periodEnd = new Date(input.periodEnd);
+  let campaignRunIds: string[] | null = null;
+  if (input.campaignId) {
+    await campaignForJob(job, input.campaignId);
+    const campaignRuns = await prisma.automationRun.findMany({
+      where: { campaignId: input.campaignId, campaign: { organizationId: job.organizationId } },
+      select: { id: true },
+    });
+    campaignRunIds = campaignRuns.map(run => run.id);
+  }
+  const metricFilters = buildAnalyticsMetricFilters({ organizationId: job.organizationId, periodStart, periodEnd, campaignId: input.campaignId, campaignRunIds });
   const [leads, qualified, drafts, sent, failed] = await Promise.all([
-    prisma.lead.count({ where: { organizationId: job.organizationId, createdAt: { gte: periodStart, lte: periodEnd } } }),
-    prisma.leadQualification.count({ where: { organizationId: job.organizationId, createdAt: { gte: periodStart, lte: periodEnd }, fit: "HIGH" } }),
-    prisma.outreachDraft.count({ where: { organizationId: job.organizationId, createdAt: { gte: periodStart, lte: periodEnd } } }),
-    prisma.outreachEvent.count({ where: { organizationId: job.organizationId, occurredAt: { gte: periodStart, lte: periodEnd }, eventType: "SENT" } }),
-    prisma.agentJob.count({ where: { organizationId: job.organizationId, createdAt: { gte: periodStart, lte: periodEnd }, status: "FAILED" } }),
+    prisma.lead.count({ where: metricFilters.leads }),
+    prisma.leadQualification.count({ where: { ...metricFilters.qualifications, fit: "HIGH" } }),
+    prisma.outreachDraft.count({ where: metricFilters.drafts }),
+    prisma.outreachEvent.count({ where: metricFilters.sent }),
+    prisma.agentJob.count({ where: metricFilters.failedJobs }),
   ]);
   const metrics = { leads, qualified, drafts, sent, failed };
   const output = await runAnalyticsAgent(job, { periodStart: input.periodStart, periodEnd: input.periodEnd, metrics });
   await prisma.analyticsInsight.create({ data: { organizationId: job.organizationId, campaignId: input.campaignId, jobId: job.id, periodStart, periodEnd, summary: output.summary, metricsJson: json(metrics), recommendations: json(output.recommendations) } });
 }
 
-export async function executeAgentJob(job: AgentJob) {
-  if (job.automationRunId && env.AI_PROVIDER === "nvidia") {
-    const run = await prisma.automationRun.findUnique({ where: { id: job.automationRunId } });
-    if (!run) throw new Error("PARENT_RUN_NOT_FOUND");
-    const limit = campaignConfigSchema.parse(run.config).maxAiCalls;
-    const reserved = await prisma.automationRun.updateMany({ where: { id: run.id, aiCalls: { lt: limit } }, data: { aiCalls: { increment: 1 } } });
-    if (!reserved.count) throw new Error("AI_BUDGET_EXHAUSTED");
+async function hasPersistedAgentOutput(tx: Prisma.TransactionClient, job: Pick<AgentJob, "id" | "type">): Promise<boolean> {
+  if (!requiresManualOutputReview(job.type)) return false;
+  if (job.type === "OUTREACH") return (await tx.outreachDraft.count({ where: { jobId: job.id } })) > 0;
+  if (job.type === "FOLLOW_UP") return (await tx.followUpPlan.count({ where: { jobId: job.id } })) > 0;
+  if (job.type === "ANALYTICS") return (await tx.analyticsInsight.count({ where: { jobId: job.id } })) > 0;
+  return false;
+}
+
+export async function retryFailedAgentJob(jobId: string) {
+  const organizationId = currentOrganization();
+  const outcome = await prisma.$transaction(async tx => {
+    const job = await tx.agentJob.findFirst({ where: { id: jobId, organizationId } });
+    if (!job) throw ApiError.notFound("Agent job not found");
+    if (job.status !== "FAILED") throw new ApiError(409, "Only a failed agent job can be retried.");
+
+    let parentStatus: "FAILED" | "WAITING" | undefined;
+    if (job.automationRunId) {
+      const parent = await tx.automationRun.findFirst({
+        where: { id: job.automationRunId, campaign: { organizationId } },
+        select: { status: true, campaign: { select: { status: true } } },
+      });
+      if (!parent || parent.campaign.status !== "ACTIVE" || (parent.status !== "FAILED" && parent.status !== "WAITING")) {
+        throw new ApiError(409, "The linked campaign run cannot resume. Activate the campaign and retry the run first.");
+      }
+      parentStatus = parent.status;
+    }
+
+    const hasExistingOutput = await hasPersistedAgentOutput(tx, job);
+    if (hasExistingOutput) {
+      const completed = await tx.agentJob.updateMany({
+        where: { id: job.id, organizationId, status: "FAILED" },
+        data: { status: "COMPLETED", leaseToken: null, leaseUntil: null, errorCode: null, errorMessage: null, finishedAt: new Date() },
+      });
+      if (!completed.count) throw new ApiError(409, "Agent job changed while it was being recovered. Reload and try again.");
+      if (job.automationRunId && parentStatus === "FAILED") {
+        await tx.automationRun.update({ where: { id: job.automationRunId }, data: { status: "WAITING", finishedAt: null, errorCode: null, errorMessage: null } });
+        await tx.runEvent.create({ data: { runId: job.automationRunId, type: "AGENT_OUTPUT_RECOVERED", message: `Recovered the saved ${job.type.toLowerCase().replaceAll("_", " ")} output without generating it again.` } });
+      }
+      return { id: job.id, type: job.type, status: "COMPLETED" as const, automationRunId: job.automationRunId, recovered: true };
+    }
+
+    let inputJson = job.inputJson as Prisma.InputJsonValue;
+    if (usesVersionedAgentOutput(job.type) && job.leadId) {
+      const lead = await tx.lead.update({
+        where: { id: job.leadId, organizationId },
+        data: { agentVersion: { increment: 1 } },
+        select: { agentVersion: true },
+      });
+      inputJson = nextAgentJobInput(job.type, job.inputJson, lead.agentVersion);
+    }
+
+    const retried = await tx.agentJob.updateMany({
+      where: { id: job.id, organizationId, status: "FAILED" },
+      data: {
+        status: "QUEUED",
+        attempts: 0,
+        runAfter: new Date(),
+        leaseToken: null,
+        leaseUntil: null,
+        errorCode: null,
+        errorMessage: null,
+        finishedAt: null,
+        inputJson,
+      },
+    });
+    if (!retried.count) throw new ApiError(409, "Agent job changed while it was being retried. Reload and try again.");
+
+    if (job.automationRunId && parentStatus === "FAILED") {
+      const restored = await tx.automationRun.updateMany({
+        where: { id: job.automationRunId, status: "FAILED", campaign: { organizationId, status: "ACTIVE" } },
+        data: { status: "WAITING", finishedAt: null, errorCode: null, errorMessage: null },
+      });
+      if (!restored.count) throw new ApiError(409, "The linked campaign run changed while the job was being retried.");
+      await tx.runEvent.create({ data: { runId: job.automationRunId, type: "AGENT_JOB_RETRY", message: `Retrying the ${job.type.toLowerCase().replaceAll("_", " ")} agent job.` } });
+    }
+
+    return { id: job.id, type: job.type, status: "QUEUED" as const, automationRunId: job.automationRunId, recovered: false };
+  });
+
+  if (outcome.recovered && outcome.automationRunId) await finalizeParentRun({ automationRunId: outcome.automationRunId });
+  return { id: outcome.id, type: outcome.type, status: outcome.status };
+}
+
+export async function reviewFollowUpPlan(input: { planId: string; version: number; decision: "APPROVED" | "CANCELLED" }) {
+  const organizationId = currentOrganization();
+  const status = input.decision === "APPROVED" ? "APPROVED" : "CANCELLED";
+  const now = new Date();
+  const changed = await prisma.followUpPlan.updateMany({
+    where: {
+      id: input.planId,
+      organizationId,
+      version: input.version,
+      status: input.decision === "APPROVED" ? "PROPOSED" : { in: ["PROPOSED", "APPROVED"] },
+      ...(input.decision === "CANCELLED" ? { dueAt: { gt: now } } : {}),
+    },
+    data: { status },
+  });
+  if (!changed.count) {
+    const plan = await prisma.followUpPlan.findFirst({ where: { id: input.planId, organizationId }, select: { id: true } });
+    if (!plan) throw ApiError.notFound("Follow-up plan not found");
+    throw new ApiError(409, "Follow-up plan changed or has already been reviewed. Reload before reviewing.");
   }
-  switch (job.type) {
-    case "RESEARCH": return executeResearch(job);
-    case "QUALIFICATION": return executeQualification(job);
-    case "CONTACT_ENRICHMENT": return executeEnrichment(job);
-    case "OUTREACH": return executeOutreach(job);
-    case "FOLLOW_UP": return executeFollowUp(job);
-    case "ANALYTICS": return executeAnalytics(job);
-  }
+  return prisma.followUpPlan.findFirstOrThrow({
+    where: { id: input.planId, organizationId },
+    select: { id: true, version: true, status: true, dueAt: true, updatedAt: true },
+  });
+}
+
+const agentJobExecutors: AgentJobExecutors = {
+  RESEARCH: executeResearch,
+  QUALIFICATION: executeQualification,
+  CONTACT_ENRICHMENT: executeEnrichment,
+  OUTREACH: executeOutreach,
+  FOLLOW_UP: executeFollowUp,
+  ANALYTICS: executeAnalytics,
+};
+
+export function executeAgentJob(job: AgentJob) {
+  return dispatchAgentJob(job, agentJobExecutors);
 }
 
 export async function approveLead(input: { assessmentId: string; version: number; decision: "APPROVED" | "REJECTED"; note?: string; recipientEmail?: string | null; recipientName?: string | null }) {
@@ -305,7 +422,7 @@ export async function sendApprovedDraft(draftId: string, idempotencyKey: string)
     const event = await prisma.outreachEvent.update({ where: { id: pending.id }, data: { eventType: "SENT", providerId: providerId(providerResult), payloadJson: payload, occurredAt: new Date() } });
     await prisma.outreachDraft.update({ where: { id: draft.id }, data: { status: "SENT" } });
     if (config.followUpEnabled) {
-      await agentJobRepository.enqueue({ organizationId, leadId: draft.leadId, type: "FOLLOW_UP", idempotencyKey: `follow-up:${draft.id}:${draft.version}`, input: json({ draftId: draft.id, version: draft.version }) });
+      await agentJobRepository.enqueue({ organizationId, leadId: draft.leadId, assessmentId: draft.job.assessmentId ?? undefined, type: "FOLLOW_UP", idempotencyKey: `follow-up:${draft.id}:${draft.version}`, input: json({ draftId: draft.id, version: draft.version }) });
     }
     return event;
   } catch (error) {
@@ -377,15 +494,35 @@ export async function getLeadAgentSummary(leadId: string) {
   return lead;
 }
 
-export async function finalizeParentRun(job: AgentJob) {
+export async function finalizeParentRun(job: Pick<AgentJob, "automationRunId">) {
   if (!job.automationRunId) return;
-  const active = await prisma.agentJob.count({ where: { automationRunId: job.automationRunId, status: { in: ["QUEUED", "RUNNING"] } } });
-  if (!active) {
-    await prisma.$transaction(async tx => {
-      const changed = await tx.automationRun.updateMany({ where: { id: job.automationRunId!, status: "WAITING" }, data: { status: "COMPLETED", stage: "REVIEW", finishedAt: new Date() } });
-      if (changed.count) await tx.runEvent.create({ data: { runId: job.automationRunId!, type: "AGENTS_COMPLETED", message: "Research and qualification jobs completed. Leads are ready for review." } });
+  await prisma.$transaction(async tx => {
+    const where = { automationRunId: job.automationRunId! };
+    const active = await tx.agentJob.count({ where: { ...where, status: { in: ["QUEUED", "RUNNING"] } } });
+    if (active) return;
+
+    const failedJob = await tx.agentJob.findFirst({
+      where: { ...where, status: "FAILED" },
+      orderBy: { updatedAt: "desc" },
+      select: { type: true },
     });
-  }
+    const finalization = getParentRunFinalization(active, failedJob?.type);
+    if (!finalization) return;
+
+    const changed = await tx.automationRun.updateMany({
+      where: { id: job.automationRunId!, status: "WAITING" },
+      data: {
+        status: finalization.status,
+        stage: finalization.stage,
+        finishedAt: new Date(),
+        errorCode: finalization.errorCode,
+        errorMessage: finalization.errorMessage,
+      },
+    });
+    if (changed.count) {
+      await tx.runEvent.create({ data: { runId: job.automationRunId!, type: finalization.eventType, message: finalization.eventMessage } });
+    }
+  });
 }
 
 export async function enqueueAnalytics(input: { campaignId: string | null; periodStart: Date; periodEnd: Date; idempotencyKey: string }) {

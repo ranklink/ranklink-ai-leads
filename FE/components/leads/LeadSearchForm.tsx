@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { searchLeads } from "@/services/leads.service";
-import { Loader2, Search } from "lucide-react";
+import { Loader2, Search, Building2, MapPin, LocateFixed, Users, Star, Globe } from "lucide-react";
 
 const schema = z.object({
   keyword: z.string().min(2, "Min 2 chars").max(100),
@@ -96,69 +96,93 @@ export function LeadSearchForm({
   const onSubmit = (values: FormValues) => mutation.mutate(values);
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-6 p-6 border rounded-xl bg-card shadow-sm">
-      <h2 className="text-xl font-semibold">Find Local Business Leads</h2>
-
-      <div className="grid md:grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label>Business / Keyword</Label>
-          <Input placeholder="Dentist" {...register("keyword")} />
-          {errors.keyword && <p className="text-xs text-red-500">{errors.keyword.message}</p>}
+    <form onSubmit={handleSubmit(onSubmit)} className="lead-search-form">
+      <div className="lead-search-form-heading">
+        <div>
+          <p className="lead-search-form-kicker">BUILD YOUR PROSPECT LIST</p>
+          <h2 id="lead-search-title">Find local businesses</h2>
+          <p className="lead-search-form-description">Set your market and we’ll surface businesses that fit.</p>
         </div>
-        <div className="space-y-2">
-          <Label>Location</Label>
-          <Input placeholder="Bengaluru, Karnataka" {...register("location")} />
-          {errors.location && <p className="text-xs text-red-500">{errors.location.message}</p>}
+        <span className="lead-search-source"><MapPin aria-hidden="true" size={15} /> Google Maps data</span>
+      </div>
+
+      <div className="lead-search-grid">
+        <div className="lead-search-field lead-search-field--wide">
+          <Label htmlFor="lead-keyword" className="lead-search-label">Business or keyword</Label>
+          <div className="lead-search-input-wrap">
+            <Building2 aria-hidden="true" className="lead-search-field-icon" />
+            <Input id="lead-keyword" placeholder="e.g. independent dentists" className="lead-search-input" aria-invalid={!!errors.keyword} aria-describedby={errors.keyword ? "lead-keyword-error" : undefined} {...register("keyword")} />
+          </div>
+          {errors.keyword && <p id="lead-keyword-error" className="lead-search-error" role="alert">{errors.keyword.message}</p>}
+        </div>
+        <div className="lead-search-field lead-search-field--wide">
+          <Label htmlFor="lead-location" className="lead-search-label">Location</Label>
+          <div className="lead-search-input-wrap">
+            <MapPin aria-hidden="true" className="lead-search-field-icon" />
+            <Input id="lead-location" placeholder="City, region" className="lead-search-input" aria-invalid={!!errors.location} aria-describedby={errors.location ? "lead-location-error" : undefined} {...register("location")} />
+          </div>
+          {errors.location && <p id="lead-location-error" className="lead-search-error" role="alert">{errors.location.message}</p>}
+        </div>
+        <div className="lead-search-field">
+          <Label htmlFor="lead-radius" className="lead-search-label">Search radius</Label>
+          <div className="lead-search-select-wrap">
+            <LocateFixed aria-hidden="true" className="lead-search-field-icon" />
+            <Select id="lead-radius" className="lead-search-select" {...register("radius")}>
+              <option value={5000}>5 km</option>
+              <option value={10000}>10 km</option>
+              <option value={20000}>20 km</option>
+              <option value={50000}>50 km</option>
+            </Select>
+          </div>
+        </div>
+        <div className="lead-search-field">
+          <Label htmlFor="lead-limit" className="lead-search-label">Number of leads</Label>
+          <div className="lead-search-select-wrap">
+            <Users aria-hidden="true" className="lead-search-field-icon" />
+            <Select id="lead-limit" className="lead-search-select" {...register("limit")}>
+              <option value={10}>10 leads</option>
+              <option value={20}>20 leads</option>
+              <option value={40}>40 leads</option>
+              <option value={60}>60 leads</option>
+              <option value={100}>100 leads</option>
+            </Select>
+          </div>
+        </div>
+        <div className="lead-search-field">
+          <Label htmlFor="lead-rating" className="lead-search-label">Minimum rating</Label>
+          <div className="lead-search-select-wrap">
+            <Star aria-hidden="true" className="lead-search-field-icon" />
+            <Select id="lead-rating" className="lead-search-select" {...register("minimumRating")}>
+              <option value="">Any rating</option>
+              <option value="3">3+ stars</option>
+              <option value="3.5">3.5+ stars</option>
+              <option value="4">4+ stars</option>
+              <option value="4.5">4.5+ stars</option>
+            </Select>
+          </div>
+        </div>
+        <div className="lead-search-field">
+          <Label htmlFor="lead-website" className="lead-search-label">Website</Label>
+          <div className="lead-search-select-wrap">
+            <Globe aria-hidden="true" className="lead-search-field-icon" />
+            <Select id="lead-website" className="lead-search-select" {...register("website")}>
+              <option value="ANY">Any</option>
+              <option value="HAS_WEBSITE">Has a website</option>
+              <option value="NO_WEBSITE">No website</option>
+            </Select>
+          </div>
         </div>
       </div>
 
-      <div className="grid md:grid-cols-3 gap-4">
-        <div className="space-y-2">
-          <Label>Radius</Label>
-          <Select {...register("radius")}>
-            <option value={5000}>5 KM</option>
-            <option value={10000}>10 KM</option>
-            <option value={20000}>20 KM</option>
-            <option value={50000}>50 KM</option>
-          </Select>
-        </div>
-        <div className="space-y-2">
-          <Label>Number of Leads</Label>
-          <Select {...register("limit")}>
-            <option value={10}>10</option>
-            <option value={20}>20</option>
-            <option value={40}>40</option>
-            <option value={60}>60</option>
-            <option value={100}>100</option>
-          </Select>
-        </div>
-        <div className="space-y-2">
-          <Label>Minimum Rating</Label>
-          <Select {...register("minimumRating")}>
-            <option value="">Any</option>
-            <option value="3">3+</option>
-            <option value="3.5">3.5+</option>
-            <option value="4">4+</option>
-            <option value="4.5">4.5+</option>
-          </Select>
-        </div>
+      {mutation.isError && <p className="lead-search-error" role="alert">{(mutation.error as Error).message}</p>}
+      {mutation.isSuccess && <p className="lead-search-success" role="status">Found {mutation.data?.data?.resultCount} leads.</p>}
+
+      <div className="lead-search-form-footer">
+        <p>Results are saved to your lead workspace.</p>
+        <Button type="submit" disabled={mutation.isPending} className="lead-search-submit">
+          {mutation.isPending ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Searching...</> : <><Search className="w-4 h-4 mr-2" />Find leads</>}
+        </Button>
       </div>
-
-      <div className="space-y-2 max-w-xs">
-        <Label>Website</Label>
-        <Select {...register("website")}>
-          <option value="ANY">Any</option>
-          <option value="HAS_WEBSITE">Has Website</option>
-          <option value="NO_WEBSITE">No Website</option>
-        </Select>
-      </div>
-
-      {mutation.isError && <p className="text-sm text-red-500">{(mutation.error as Error).message}</p>}
-      {mutation.isSuccess && <p className="text-sm text-green-600">Found {mutation.data?.data?.resultCount} leads!</p>}
-
-      <Button type="submit" disabled={mutation.isPending} className="w-full md:w-auto">
-        {mutation.isPending ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Searching...</> : <><Search className="w-4 h-4 mr-2" />Find Leads</>}
-      </Button>
     </form>
   );
 }

@@ -19,6 +19,7 @@ export async function apiFetch(input: RequestInfo | URL, options?: RequestInit):
 export async function apiRequest<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await apiFetch(`${API_URL}${path}`, {
     ...options,
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
       ...(options?.headers || {}),

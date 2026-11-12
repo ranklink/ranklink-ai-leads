@@ -21,9 +21,14 @@ export const runRepository = {
     return publicRun;
   },
   async cancel(id: string) {
-    const changed = await prisma.automationRun.updateMany({ where: { id, campaign: { organizationId: currentOrganization() }, status: { in: ["QUEUED", "RUNNING"] } }, data: { status: "CANCELLED", leaseToken: null, leaseUntil: null, finishedAt: new Date() } });
-    if (!changed.count) throw new ApiError(409, "Run is missing or already finished");
-    await prisma.runEvent.create({ data: { runId: id, type: "CANCELLED", message: "Run cancelled by operator" } });
+    const organizationId = currentOrganization();
+    const now = new Date();
+    await prisma.$transaction(async tx => {
+      const changed = await tx.automationRun.updateMany({ where: { id, campaign: { organizationId }, status: { in: ["QUEUED", "RUNNING", "WAITING"] } }, data: { status: "CANCELLED", leaseToken: null, leaseUntil: null, finishedAt: now } });
+      if (!changed.count) throw new ApiError(409, "Run is missing or already finished");
+      await tx.agentJob.updateMany({ where: { automationRunId: id, organizationId, status: { in: ["QUEUED", "RUNNING"] } }, data: { status: "CANCELLED", leaseToken: null, leaseUntil: null, finishedAt: now, errorCode: "PARENT_RUN_CANCELLED", errorMessage: "Parent campaign run was cancelled." } });
+      await tx.runEvent.create({ data: { runId: id, type: "CANCELLED", message: "Run cancelled by operator" } });
+    });
   },
   async retry(id: string) {
     const changed = await prisma.automationRun.updateMany({ where: { id, campaign: { organizationId: currentOrganization(), status: "ACTIVE" }, status: "FAILED", attempts: { lt: MAX_RUN_ATTEMPTS } }, data: { status: "QUEUED", leaseToken: null, leaseUntil: null, availableAt: new Date(), finishedAt: null, errorCode: null, errorMessage: null } });

@@ -9,6 +9,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { Clock, Eye, History } from "lucide-react";
+import "./search-page.css";
 
 function getInitialFromStorage(): { keyword?: string; location?: string; searchId?: string } | null {
   try {
@@ -93,10 +94,15 @@ function SearchPageContent() {
   const bannerSearch = lastSearch || lastStored;
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
+    <div className="lead-search-page">
+      <header className="lead-search-intro">
+        <p className="lead-search-eyebrow"><span /> LOCAL MARKET INTELLIGENCE</p>
+        <h1>Find your next best customers</h1>
+        <p>Search local businesses, spot promising niches, and build a focused pipeline.</p>
+      </header>
       {/* Recently searched banner - fixes "can't see searched one after coming back" */}
       {bannerSearch && (
-        <Card className="px-4 py-3 flex flex-wrap items-center justify-between gap-3 bg-amber-50/70 border-amber-200">
+        <Card className="lead-search-last-run px-4 py-3 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-sm">
             <span className="p-1.5 rounded-md bg-amber-500 text-white"><History className="w-4 h-4" /></span>
             <span>
@@ -131,7 +137,7 @@ function SearchPageContent() {
 
       {/* Recent searches strip (5) */}
       {recent.length > 1 && (
-        <div className="flex items-center gap-2 overflow-x-auto pb-1 text-sm">
+        <div className="lead-search-recent-strip flex items-center gap-2 overflow-x-auto pb-1 text-sm">
           <span className="text-muted-foreground shrink-0 flex items-center gap-1"><Clock className="w-3 h-3" /> Recent:</span>
           {recent.slice(0, 5).map((s: any) => (
             <button
@@ -147,24 +153,28 @@ function SearchPageContent() {
         </div>
       )}
 
-      <NicheSuggestions
-        locationValue={searchLocation}
-        onSelectNiche={(niche) => {
-          setKeyword(niche);
-          document.getElementById("lead-search-form")?.scrollIntoView({ behavior: "smooth", block: "center" });
-        }}
-        onLocationChange={setSearchLocation}
-        recentKeywordSet={recentKeywordSet}
-        recentSearches={recent}
-      />
-      <div id="lead-search-form" className="max-w-3xl mx-auto">
-        <LeadSearchForm
-          initialKeyword={keyword}
-          initialLocation={searchLocation}
-          onKeywordChange={setKeyword}
+      <section className="lead-search-primary" aria-labelledby="lead-search-title">
+        <div id="lead-search-form">
+          <LeadSearchForm
+            initialKeyword={keyword}
+            initialLocation={searchLocation}
+            onKeywordChange={setKeyword}
+            onLocationChange={setSearchLocation}
+          />
+        </div>
+      </section>
+      <section className="lead-search-secondary" aria-label="Niche discovery">
+        <NicheSuggestions
+          locationValue={searchLocation}
+          onSelectNiche={(niche) => {
+            setKeyword(niche);
+            document.getElementById("lead-search-form")?.scrollIntoView({ behavior: "smooth", block: "center" });
+          }}
           onLocationChange={setSearchLocation}
+          recentKeywordSet={recentKeywordSet}
+          recentSearches={recent}
         />
-      </div>
+      </section>
     </div>
   );
 }

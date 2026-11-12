@@ -8,6 +8,8 @@ import { MapPin, Phone, Globe, Star, Users, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ReviewsList } from "./ReviewsList";
 import { OutreachComposer } from "./OutreachComposer";
+import { LeadAgentPanel } from "@/components/agents/LeadAgentPanel";
+import { CallWorkspace } from "./CallWorkspace";
 
 export function LeadDetails({ lead }: { lead: Lead }) {
   return (
@@ -49,6 +51,8 @@ export function LeadDetails({ lead }: { lead: Lead }) {
       </Card>
 
       <ReviewsList reviews={lead.reviews || []} />
+      <LeadAgentPanel lead={lead} />
+      <CallWorkspace leadId={lead.id} />
       <OutreachComposer lead={lead} />
     </div>
   );
