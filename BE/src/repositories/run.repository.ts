@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import prisma from "../config/database";
-import { currentOrganization, authContext } from "../auth/context";
+import { currentOrganization, requestContext } from "../context/request-context";
 import { ApiError } from "../utils/api-error";
 import { LEASE_MS, MAX_RUN_ATTEMPTS, RunStopped, BudgetExceeded } from "../services/automation/policy";
 
@@ -21,9 +21,14 @@ export const runRepository = {
     return publicRun;
   },
   async cancel(id: string) {
-    const changed = await prisma.automationRun.updateMany({ where: { id, campaign: { organizationId: currentOrganization() }, status: { in: ["QUEUED", "RUNNING"] } }, data: { status: "CANCELLED", leaseToken: null, leaseUntil: null, finishedAt: new Date() } });
-    if (!changed.count) throw new ApiError(409, "Run is missing or already finished");
-    await prisma.runEvent.create({ data: { runId: id, type: "CANCELLED", message: "Run cancelled by operator" } });
+    const organizationId = currentOrganization();
+    const now = new Date();
+    await prisma.$transaction(async tx => {
+      const changed = await tx.automationRun.updateMany({ where: { id, campaign: { organizationId }, status: { in: ["QUEUED", "RUNNING", "WAITING"] } }, data: { status: "CANCELLED", leaseToken: null, leaseUntil: null, finishedAt: now } });
+      if (!changed.count) throw new ApiError(409, "Run is missing or already finished");
+      await tx.agentJob.updateMany({ where: { automationRunId: id, organizationId, status: { in: ["QUEUED", "RUNNING"] } }, data: { status: "CANCELLED", leaseToken: null, leaseUntil: null, finishedAt: now, errorCode: "PARENT_RUN_CANCELLED", errorMessage: "Parent campaign run was cancelled." } });
+      await tx.runEvent.create({ data: { runId: id, type: "CANCELLED", message: "Run cancelled by operator" } });
+    });
   },
   async retry(id: string) {
     const changed = await prisma.automationRun.updateMany({ where: { id, campaign: { organizationId: currentOrganization(), status: "ACTIVE" }, status: "FAILED", attempts: { lt: MAX_RUN_ATTEMPTS } }, data: { status: "QUEUED", leaseToken: null, leaseUntil: null, availableAt: new Date(), finishedAt: null, errorCode: null, errorMessage: null } });
@@ -54,7 +59,7 @@ export const runRepository = {
     });
   },
   async review(id: string, version: number, action: "APPROVE" | "REJECT") {
-    const changed = await prisma.leadAssessment.updateMany({ where: { id, version, status: "REVIEW", run: { campaign: { organizationId: currentOrganization() } } }, data: { status: action === "APPROVE" ? "APPROVED" : "REJECTED", approvedBy: action === "APPROVE" ? authContext.getStore()!.userId : null, approvedAt: action === "APPROVE" ? new Date() : null } });
+    const changed = await prisma.leadAssessment.updateMany({ where: { id, version, status: "REVIEW", run: { campaign: { organizationId: currentOrganization() } } }, data: { status: action === "APPROVE" ? "APPROVED" : "REJECTED", approvedBy: action === "APPROVE" ? requestContext.getStore()!.userId : null, approvedAt: action === "APPROVE" ? new Date() : null } });
     if (!changed.count) throw new ApiError(409, "Draft changed or is no longer awaiting review. Reload before reviewing.");
   },
   async edit(id: string, version: number, subject: string, body: string) {

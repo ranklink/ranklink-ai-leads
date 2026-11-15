@@ -1,10 +1,10 @@
 import { Router } from "express";
 import prisma from "../config/database";
-import { currentOrganization } from "../auth/context";
+import { currentOrganization } from "../context/request-context";
 import { asyncHandler } from "../utils/async-handler";
 import { ApiError } from "../utils/api-error";
-import { analyticsJobSchema, draftReviewSchema, draftUpdateSchema, idempotencyKeySchema, leadReviewSchema, queueResearchSchema, suppressionSchema } from "../validators/agent.validator";
-import { approveDraft, approveLead, enqueueAnalytics, enqueueResearch, getLeadAgentSummary, sendApprovedDraft, suppressContact, updateDraft } from "../services/agents/agent-workflow.service";
+import { analyticsJobSchema, draftReviewSchema, draftUpdateSchema, followUpReviewSchema, idempotencyKeySchema, leadReviewSchema, queueResearchSchema, suppressionSchema } from "../validators/agent.validator";
+import { approveDraft, approveLead, enqueueAnalytics, enqueueResearch, getLeadAgentSummary, retryFailedAgentJob, reviewFollowUpPlan, sendApprovedDraft, suppressContact, updateDraft } from "../services/agents/agent-workflow.service";
 
 const router = Router();
 const requestKey = (header: string | undefined) => idempotencyKeySchema.parse(header);
@@ -22,6 +22,11 @@ router.get("/agent-jobs/:id", asyncHandler(async (req, res) => {
   if (!job) throw ApiError.notFound("Agent job not found");
   const { leaseToken: _leaseToken, inputJson: _inputJson, ...safeJob } = job;
   res.json({ success: true, data: safeJob });
+}));
+
+router.post("/agent-jobs/:id/retry", asyncHandler(async (req, res) => {
+  const job = await retryFailedAgentJob(req.params.id);
+  res.status(job.status === "QUEUED" ? 202 : 200).json({ success: true, data: job });
 }));
 
 router.post("/assessments/:id/review", asyncHandler(async (req, res) => {
@@ -46,6 +51,12 @@ router.post("/agent-drafts/:id/send", asyncHandler(async (req, res) => {
   res.status(event.eventType === "SENT" ? 201 : 200).json({ success: true, data: event });
 }));
 
+router.post("/follow-up-plans/:id/review", asyncHandler(async (req, res) => {
+  const input = followUpReviewSchema.parse(req.body);
+  const plan = await reviewFollowUpPlan({ planId: req.params.id, ...input });
+  res.json({ success: true, data: plan });
+}));
+
 router.post("/suppressions", asyncHandler(async (req, res) => {
   const input = suppressionSchema.parse(req.body);
   res.status(201).json({ success: true, data: await suppressContact(input.contact, input.reason) });
@@ -58,4 +69,3 @@ router.post("/analytics/agent-jobs", asyncHandler(async (req, res) => {
 }));
 
 export default router;
-

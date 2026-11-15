@@ -22,12 +22,20 @@ interface Props {
 function competitionColor(c: string) {
   if (c === "LOW") return "bg-emerald-500 text-white border-emerald-600";
   if (c === "MEDIUM") return "bg-amber-500 text-white border-amber-600";
-  return "bg-red-500 text-white border-red-600";
+  if (c === "HIGH") return "bg-red-500 text-white border-red-600";
+  return "bg-slate-500 text-white border-slate-600";
 }
 function competitionIcon(c: string) {
   if (c === "LOW") return <TrendingUp className="w-3 h-3" />;
   if (c === "MEDIUM") return <BarChart3 className="w-3 h-3" />;
-  return <TrendingDown className="w-3 h-3" />;
+  if (c === "HIGH") return <TrendingDown className="w-3 h-3" />;
+  return <Lightbulb className="w-3 h-3" />;
+}
+function reviewSummary(suggestion: NicheSuggestion) {
+  const reviews = suggestion.metrics.avgReviewCount;
+  if (reviews === null) return "No review sample";
+  const rating = suggestion.metrics.avgRating;
+  return reviews + " avg reviews" + (rating === null ? "" : " • " + rating + "★");
 }
 
 export function NicheSuggestions({ locationValue, onSelectNiche, onLocationChange, recentKeywordSet, recentSearches }: Props) {
@@ -64,15 +72,15 @@ export function NicheSuggestions({ locationValue, onSelectNiche, onLocationChang
               <span className="lead-niche-mark p-2 rounded-lg text-white">
                 <Sparkles className="w-4 h-4" />
               </span>
-              AI Niche Finder
+              Niche Finder
               <Badge className="lead-niche-beta ml-1 text-[10px]">BETA</Badge>
             </CardTitle>
             <CardDescription className="lead-niche-description mt-1.5 text-xs md:text-sm max-w-2xl">
-              Discover <span className="font-semibold text-violet-700">best & low-competition</span> niches for <span className="font-medium">{data?.location || loc}</span>. Based on {data?.totalLeadsAnalyzed ?? "—"} leads analyzed. Green = low saturation = higher win-rate.
+              Find potential outreach opportunities in <span className="font-medium">{data?.location || loc}</span>. Rankings prioritize local places rated 3.5★ or lower; ratings alone do not establish buying intent. {data?.totalLeadsAnalyzed ?? "—"} saved places analyzed.
             </CardDescription>
           </div>
           <div className="hidden md:flex items-center gap-1 text-[11px] text-muted-foreground">
-            <Lightbulb className="w-3 h-3" /> AI powered
+            <Lightbulb className="w-3 h-3" /> Local data + curated ideas
           </div>
         </div>
 
@@ -114,7 +122,7 @@ export function NicheSuggestions({ locationValue, onSelectNiche, onLocationChang
           <div className="space-y-1.5 md:w-48">
             <Label className="lead-niche-label text-xs">Filter</Label>
             <Select value={filter} onChange={(e) => setFilter(e.target.value)} className="lead-niche-input">
-              <option value="ALL">All (best first)</option>
+              <option value="ALL">All suggestions</option>
               <option value="LOW">Low competition only</option>
               <option value="MEDIUM">Low + Medium</option>
             </Select>
@@ -156,32 +164,46 @@ export function NicheSuggestions({ locationValue, onSelectNiche, onLocationChang
                   <span className="absolute -top-2 -right-2 text-[10px] px-2 py-0.5 rounded-full bg-violet-600 text-white flex items-center gap-1 shadow"><CheckCircle2 className="w-3 h-3" /> Searched</span>
                 )}
                 <div className="flex items-start justify-between gap-2 mb-2">
-                  <h4 className="lead-niche-card-title font-semibold text-sm leading-tight line-clamp-1">{s.niche}</h4>
+                  <div className="min-w-0">
+                    <h4 className="lead-niche-card-title font-semibold text-sm leading-tight line-clamp-1">{s.niche}</h4>
+                    <Badge className="mt-1 text-[10px] px-2 py-0.5">
+                      {s.dataSource === "CURATED" ? "Idea · no local data" : "Local data · sample " + s.metrics.count}
+                    </Badge>
+                  </div>
                   <Badge className={`text-[10px] px-2 py-0.5 shrink-0 ${competitionColor(s.competition)}`}>
                     <span className="flex items-center gap-1">
-                      {competitionIcon(s.competition)} {s.competition}
+                      {competitionIcon(s.competition)} {s.competition === "UNKNOWN" ? "Unverified" : s.competition}
                     </span>
                   </Badge>
                 </div>
 
                 <p className="text-xs text-muted-foreground line-clamp-2 mb-2.5 min-h-[32px]">{s.reason}</p>
+                {s.confidence === "LOW" && s.dataSource === "LOCAL" && (
+                  <p className="mb-2 rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-[11px] text-amber-900">
+                    Too few examples to rank reliably. Treat this as an early signal.
+                  </p>
+                )}
 
-                <div className="grid grid-cols-3 gap-2 text-[11px] mb-3">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] mb-3">
                   <div className="rounded-lg bg-muted/60 px-2 py-1.5 text-center">
                     <div className="font-semibold">{s.metrics.count}</div>
-                    <div className="text-muted-foreground leading-none">rivals</div>
+                    <div className="text-muted-foreground leading-none">saved leads</div>
+                  </div>
+                  <div className="rounded-lg bg-muted/60 px-2 py-1.5 text-center">
+                    <div className="font-semibold">{s.metrics.lowRatedPct === null ? "—" : `${s.metrics.lowRatedCount} (${s.metrics.lowRatedPct}%)`}</div>
+                    <div className="text-muted-foreground leading-none">≤3.5★ places</div>
                   </div>
                   <div className="rounded-lg bg-muted/60 px-2 py-1.5 text-center">
                     <div className="font-semibold flex items-center justify-center gap-1">
-                      <Globe className="w-3 h-3" /> {100 - s.metrics.withoutWebsitePct}%
+                      <Globe className="w-3 h-3" /> {s.metrics.withoutWebsitePct === null ? "—" : 100 - s.metrics.withoutWebsitePct + "%"}
                     </div>
                     <div className="text-muted-foreground leading-none">have site</div>
                   </div>
                   <div className="rounded-lg bg-violet-50 border border-violet-100 px-2 py-1.5 text-center">
                     <div className="font-bold text-violet-700 flex items-center justify-center gap-0.5">
-                      <Star className="w-3 h-3 fill-violet-600 text-violet-600" /> {s.opportunityScore}
+                      <Star className="w-3 h-3 fill-violet-600 text-violet-600" /> {s.opportunityScore ?? "—"}
                     </div>
-                    <div className="text-violet-600 leading-none">opportunity</div>
+                    <div className="text-violet-600 leading-none">opportunity score</div>
                   </div>
                 </div>
 
@@ -194,7 +216,7 @@ export function NicheSuggestions({ locationValue, onSelectNiche, onLocationChang
 
                 <div className="mt-auto flex items-center justify-between gap-2">
                   <span className="text-[11px] text-muted-foreground flex items-center gap-1">
-                    <BarChart3 className="w-3 h-3" /> {s.metrics.avgReviewCount} avg reviews{s.metrics.avgRating ? ` • ${s.metrics.avgRating}★` : ""}
+                    <BarChart3 className="w-3 h-3" /> {reviewSummary(s)}
                   </span>
                   <div className="flex gap-1.5">
                     {isSearched && matchingSearch && (

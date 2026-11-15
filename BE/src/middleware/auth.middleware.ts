@@ -1,51 +1,55 @@
-import type { Request, Response, NextFunction } from "express";
-import prisma from "../config/database";
-import { authContext } from "../auth/context";
-import { hashToken } from "../auth/password";
+import type { NextFunction, Request, Response } from "express";
 import { ApiError } from "../utils/api-error";
 import { env } from "../config/env";
+import { resolveSession } from "../services/auth.service";
 
-export function sessionToken(req: Request): string | undefined {
-  const cookieHeader = req.headers.cookie;
-  if (!cookieHeader) return undefined;
+export const SESSION_COOKIE_NAME = "leado_session";
 
-  for (const cookie of cookieHeader.split(";")) {
-    const separator = cookie.indexOf("=");
-    if (separator < 0 || cookie.slice(0, separator).trim() !== "leads_session") continue;
-    return decodeURIComponent(cookie.slice(separator + 1).trim());
-  }
-  return undefined;
+function readCookie(req: Request, name: string): string | null {
+  const header = req.headers.cookie;
+  if (!header) return null;
+  const item = header.split(";").map(part => part.trim()).find(part => part.startsWith(`${name}=`));
+  return item ? item.slice(name.length + 1) : null;
 }
 
-export function sameOrigin(req: Request, _res: Response, next: NextFunction) {
-  if (env.isProduction && !["GET", "HEAD", "OPTIONS"].includes(req.method)) {
-    const origin = req.get("origin");
-    if (!origin || origin !== env.FRONTEND_URL) return next(new ApiError(403, "Request origin is not allowed."));
+export async function authenticateRequest(req: Request, _res: Response, next: NextFunction) {
+  try {
+    const token = readCookie(req, SESSION_COOKIE_NAME);
+    if (token) {
+      const session = await resolveSession(token);
+      if (session) {
+        req.sessionToken = token;
+        req.authenticatedUser = {
+          id: session.user.id,
+          organizationId: session.user.organizationId,
+          email: session.user.email,
+          role: session.user.role,
+        };
+      }
+    }
+    if (env.AUTH_REQUIRED && !req.authenticatedUser) return next(new ApiError(401, "Sign in to continue."));
+    return next();
+  } catch (error) {
+    return next(error);
+  }
+}
+
+export function requireAuthenticatedUser(req: Request): NonNullable<Request["authenticatedUser"]> {
+  if (!req.authenticatedUser) throw new ApiError(401, "Sign in to continue.");
+  return req.authenticatedUser;
+}
+
+export function authorizeWorkspaceWrites(req: Request, _res: Response, next: NextFunction) {
+  if (env.AUTH_REQUIRED && !["GET", "HEAD", "OPTIONS"].includes(req.method) && req.authenticatedUser?.role === "VIEWER") {
+    return next(new ApiError(403, "This account has read-only access."));
   }
   return next();
 }
 
-export async function requireAuth(req: Request, _res: Response, next: NextFunction) {
-  try {
-    const token = sessionToken(req);
-    if (token) {
-      const session = await prisma.session.findUnique({
-        where: { tokenHash: hashToken(token) },
-        include: { user: true },
-      });
-      if (session && session.expiresAt > new Date() && !session.user.disabled) {
-        authContext.run({ organizationId: session.user.organizationId, userId: session.user.id, role: session.user.role }, next);
-        return;
-      }
-    }
+export function sessionCookieOptions() {
+  return { httpOnly: true as const, secure: env.isProduction, sameSite: "lax" as const, path: "/api/v1", maxAge: 7 * 24 * 60 * 60 * 1000 };
+}
 
-    if (env.isProduction) return next(new ApiError(401, "Please sign in to continue."));
-
-    // Local development convenience. Production always requires a real session.
-    const existingOrg = await prisma.organization.findFirst({ select: { id: true } });
-    const organization = existingOrg ?? await prisma.organization.create({ data: { name: "Local Dev" } });
-    let user = await prisma.user.findFirst({ where: { organizationId: organization.id } });
-    if (!user) user = await prisma.user.create({ data: { organizationId: organization.id, email: "dev@local.dev", passwordHash: "dev", role: "ADMIN" } });
-    authContext.run({ organizationId: organization.id, userId: user.id, role: user.role }, next);
-  } catch (error) { next(error); }
+export function sessionTokenFromRequest(req: Request) {
+  return readCookie(req, SESSION_COOKIE_NAME);
 }

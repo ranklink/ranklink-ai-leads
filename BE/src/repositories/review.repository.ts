@@ -1,5 +1,5 @@
 import prisma from "../config/database";
-import { currentOrganization } from "../auth/context";
+import { currentOrganization } from "../context/request-context";
 import type { NormalizedReview } from "../types/google-places.types";
 
 export class ReviewRepository {

@@ -1,4 +1,4 @@
-import { API_URL, authenticatedFetch as fetch } from "./api";
+import { API_URL, apiFetch as fetch } from "./api";
 
 export async function getSearches(page = 1, limit = 20) {
   const res = await fetch(`${API_URL}/searches?page=${page}&limit=${limit}`);

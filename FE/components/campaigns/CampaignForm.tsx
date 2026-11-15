@@ -4,11 +4,12 @@ import { Button } from "@/components/ui/button";
 import type { Campaign, CampaignConfig } from "@/types/automation";
 
 const initial: CampaignConfig = { keyword: "", location: "", offer: "", senderName: "", qualificationCriteria: "", limit: 10, minimumScore: 50, website: "ANY", intervalHours: null, maxAiCalls: 40, maxGoogleCalls: 22, mode: "DRAFT_ONLY", maxDailySends: 20, minQualificationConfidence: 0.8, minContactConfidence: 0.8, requireVerifiedContact: true, followUpEnabled: false };
-export function CampaignForm({ campaign, onSave, onCancel }: { campaign?: Campaign; onSave: (input: { name: string; config: CampaignConfig }) => Promise<void>; onCancel: () => void }) {
+export function CampaignForm({ campaign, onSave, onCancel, aiReady, outboundReady }: { campaign?: Campaign; onSave: (input: { name: string; config: CampaignConfig }) => Promise<void>; onCancel: () => void; aiReady: boolean; outboundReady: boolean }) {
   const [name, setName] = useState(campaign?.name ?? "");
   const [config, setConfig] = useState<CampaignConfig>({ ...initial, ...(campaign?.config ?? {}) });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const autoSendReady = aiReady && outboundReady;
   function field<K extends keyof CampaignConfig>(key: K, value: CampaignConfig[K]) { setConfig(previous => ({ ...previous, [key]: value })); }
   async function submit(event: FormEvent) {
     event.preventDefault(); setBusy(true); setError("");
@@ -32,15 +33,16 @@ export function CampaignForm({ campaign, onSave, onCancel }: { campaign?: Campai
       <label className="space-y-1 text-sm">Run schedule<select className={inputClass} value={config.intervalHours ?? "manual"} onChange={event => field("intervalHours", event.target.value === "manual" ? null : Number(event.target.value))}><option value="manual">Start manually</option><option value="24">Every 24 hours</option><option value="168">Every 7 days</option></select></label>
       <label className="space-y-1 text-sm">Maximum AI requests per run<input type="number" className={inputClass} required min={1} max={80} value={config.maxAiCalls} onChange={event => field("maxAiCalls", Number(event.target.value))} /></label>
       <label className="space-y-1 text-sm">Maximum Google requests per run<input type="number" className={inputClass} required min={1} max={30} value={config.maxGoogleCalls} onChange={event => field("maxGoogleCalls", Number(event.target.value))} /></label>
-      <label className="space-y-1 text-sm">Campaign mode<select className={inputClass} value={config.mode} onChange={event => field("mode", event.target.value as CampaignConfig["mode"])}><option value="DRAFT_ONLY">Drafts for review</option><option value="AUTO_SEND">Automatically send approved matches</option></select></label>
+      <label className="space-y-1 text-sm">Campaign mode<select className={inputClass} value={config.mode} onChange={event => field("mode", event.target.value as CampaignConfig["mode"])}><option value="DRAFT_ONLY">Drafts for review</option><option value="AUTO_SEND" disabled={!autoSendReady}>Automatically send approved matches{autoSendReady ? "" : " (setup required)"}</option></select></label>
       <label className="space-y-1 text-sm">Maximum sends per day<input type="number" className={inputClass} required min={1} max={500} value={config.maxDailySends} onChange={event => field("maxDailySends", Number(event.target.value))} /></label>
       <label className="space-y-1 text-sm">Minimum qualification confidence<input type="number" className={inputClass} required min={0} max={1} step={0.05} value={config.minQualificationConfidence} onChange={event => field("minQualificationConfidence", Number(event.target.value))} /></label>
       <label className="space-y-1 text-sm">Minimum contact confidence<input type="number" className={inputClass} required min={0} max={1} step={0.05} value={config.minContactConfidence} onChange={event => field("minContactConfidence", Number(event.target.value))} /></label>
       <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={config.requireVerifiedContact} onChange={event => field("requireVerifiedContact", event.target.checked)} />Require Hunter-verified contacts</label>
       <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={config.followUpEnabled} onChange={event => field("followUpEnabled", event.target.checked)} />Enable one automated follow-up</label>
     </div>
-    <p className="text-sm text-muted-foreground">Draft-only campaigns never send. Auto-send requires outbound sending to be enabled on the backend, a verified contact, and the configured daily limit. Recurring runs begin after activation.</p>
+    <p className="text-sm text-muted-foreground">Draft-only campaigns never send. Auto-send is available after model-backed AI and the Hunter sending mailbox are configured. Every sent contact must be verified and stay within the daily limit. Recurring runs begin after activation.</p>
+    {!autoSendReady && <p className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm" role="status">Auto-send is locked until NVIDIA model access and an enabled Hunter mailbox are ready. You can create a draft-only campaign now.</p>}
     {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
-    <div className="flex gap-3"><Button disabled={busy}>{busy ? "Saving…" : "Save campaign"}</Button><Button type="button" variant="outline" onClick={onCancel} disabled={busy}>Cancel</Button></div>
+    <div className="flex gap-3"><Button disabled={busy || (config.mode === "AUTO_SEND" && !autoSendReady)}>{busy ? "Saving…" : "Save campaign"}</Button><Button type="button" variant="outline" onClick={onCancel} disabled={busy}>Cancel</Button></div>
   </form>;
 }

@@ -109,13 +109,12 @@ This repository includes a Render Blueprint for the Next.js frontend, Express AP
 
 1. Push this project to a private GitHub repository and connect it to Render.
 2. Create a TiDB Cloud Starter instance and database. Copy its Prisma-compatible MySQL URL (including `sslaccept=strict`).
-3. In Render, create a Blueprint from the repository root using `render.yaml`. Enter the same `DATABASE_URL` for the API and worker, `GOOGLE_PLACES_API_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME` (without `@`), `FRONTEND_URL`, `BOOTSTRAP_EMAIL`, and a unique `BOOTSTRAP_PASSWORD` of at least 14 characters as private environment values. `FRONTEND_URL` must be the exact HTTPS URL Render assigns to `ai-leads-frontend` (no trailing slash).
-4. The API startup applies checked-in Prisma migrations and creates the first administrator only if that email does not already exist. After the first successful deployment, remove `BOOTSTRAP_PASSWORD` from the API environment and redeploy; the existing account is left unchanged.
-5. The worker uses Telegram long polling, so no inbound Telegram webhook URL is required. Keep the worker running to process bot commands and automation jobs. Sign in using `BOOTSTRAP_EMAIL` and the password you chose.
+3. In Render, create a Blueprint from the repository root using `render.yaml`. Enter the `DATABASE_URL`, `GOOGLE_PLACES_API_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME` (without `@`), and `FRONTEND_URL` as private environment values. `FRONTEND_URL` must be the exact HTTPS URL Render assigns to `ai-leads-frontend` (no trailing slash).
+4. The API creates a `Default Workspace` organization on first use if the database has no organization. Requests use the first created organization.
+5. The worker uses Telegram long polling, so no inbound Telegram webhook URL is required. Keep the worker running to process bot commands and automation jobs.
 
 `OUTREACH_ENABLED` is forced off. Automated sending is not enabled by this deployment. Render free web services sleep after inactivity and are intended for previews; the worker requires a paid always-on plan. Render lists the smallest worker plan at about $7/month at the time of writing; confirm current pricing in Render before deploying. The TiDB Starter plan has its own limits and terms.
-
-The app requires authentication in production. Public demo credentials have been removed, and API access is scoped to the signed-in account's organization. Keep the Render and database accounts private.
+The app does not require sign-in. Anyone who can reach the frontend can access the shared workspace and its lead data. Keep the frontend and API deployment private if that data must remain private.
 
 ## API Examples
 - `POST /api/v1/leads/search` {keyword, location, radius, limit, minimumRating, website}

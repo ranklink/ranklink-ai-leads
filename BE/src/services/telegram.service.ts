@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { authContext, currentOrganization } from "../auth/context";
+import { requestContext, currentOrganization } from "../context/request-context";
 import prisma from "../config/database";
 import { env } from "../config/env";
 import { searchLeadsSchema } from "../validators/lead-search.validator";
@@ -39,7 +39,7 @@ export async function createTelegramLink() {
   await prisma.telegramLinkCode.updateMany({ where: { organizationId, usedAt: null }, data: { usedAt: new Date() } });
   await prisma.telegramLinkCode.create({ data: {
     organizationId,
-    userId: authContext.getStore()?.userId ?? "unknown",
+    userId: requestContext.getStore()?.userId ?? "unknown",
     codeHash: sha256(code),
     expiresAt: new Date(Date.now() + CODE_LIFETIME_MS),
   } });
@@ -152,7 +152,7 @@ async function handleCommand(payload: unknown) {
   }
 
   await sendTelegramMessage(incoming.chatId, `Searching for ${input.data.keyword} in ${input.data.location}…`);
-  await authContext.run({ organizationId: connection.organizationId, userId: "telegram", role: "OPERATOR" }, async () => {
+  await requestContext.run({ organizationId: connection.organizationId, userId: "telegram", role: "OPERATOR" }, async () => {
     const results = await searchService.searchLeads(input.data);
     if (!results.leads.length) {
       await sendTelegramMessage(incoming.chatId, `No matching businesses found for ${input.data.keyword} in ${input.data.location}.`);

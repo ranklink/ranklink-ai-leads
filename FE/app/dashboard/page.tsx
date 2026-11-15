@@ -4,6 +4,7 @@ import { getDashboardStats } from "@/services/dashboard.service";
 import { getSearches } from "@/services/searches.service";
 import { DashboardStats } from "@/components/dashboard/DashboardStats";
 import { RecentSearches } from "@/components/dashboard/RecentSearches";
+import { AnalyticsAgentPanel } from "@/components/agents/AnalyticsAgentPanel";
 
 export default function DashboardPage() {
   const { data: statsData, isLoading: statsLoading } = useQuery({
@@ -24,6 +25,7 @@ export default function DashboardPage() {
       <h1 className="text-2xl font-bold">Dashboard</h1>
       <DashboardStats stats={statsData.data} />
       <RecentSearches searches={searchesData?.data?.items || []} />
+      <AnalyticsAgentPanel />
     </div>
   );
 }

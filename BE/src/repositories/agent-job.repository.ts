@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Prisma, type AgentJob, type AgentType } from "@prisma/client";
 import prisma from "../config/database";
-import { currentOrganization } from "../auth/context";
+import { currentOrganization } from "../context/request-context";
 
 const AGENT_LEASE_MS = 90_000;
 
@@ -81,4 +81,3 @@ export const agentJobRepository = {
     await prisma.agentJob.updateMany({ where: { id: job.id, status: "RUNNING", leaseToken: job.leaseToken }, data: { leaseUntil: new Date(Date.now() + AGENT_LEASE_MS) } });
   },
 };
-

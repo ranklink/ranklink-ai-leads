@@ -2,6 +2,7 @@ import { Prisma, type AgentJob } from "@prisma/client";
 import { z } from "zod";
 import prisma from "../../config/database";
 import { env } from "../../config/env";
+import { campaignConfigSchema } from "../../validators/campaign.validator";
 
 const providerResponseSchema = z.object({
   choices: z.array(z.object({ message: z.object({ content: z.string().min(1).max(100_000) }) })).min(1),
@@ -14,6 +15,7 @@ export interface StructuredAgentSpec<TInput, TOutput> {
   inputSchema: z.ZodType<TInput>;
   outputSchema: z.ZodType<TOutput>;
   fallback(input: TInput): TOutput;
+  forceFallback?: boolean;
 }
 
 function json(value: unknown): Prisma.InputJsonValue {
@@ -29,8 +31,25 @@ function errorCode(error: unknown): string {
   if (error instanceof z.ZodError) return "AGENT_SCHEMA_INVALID";
   if (error instanceof SyntaxError) return "AGENT_JSON_INVALID";
   if (error instanceof Error && /^AI_HTTP_\d+$/.test(error.message)) return error.message;
+  if (error instanceof Error && /^[A-Z0-9_]+$/.test(error.message)) return error.message;
   if (error instanceof Error && error.name === "TimeoutError") return "AI_TIMEOUT";
   return "AGENT_EXECUTION_FAILED";
+}
+
+async function reserveParentAiCall(job: AgentJob) {
+  if (!job.automationRunId) return;
+  const run = await prisma.automationRun.findFirst({
+    where: { id: job.automationRunId, campaign: { organizationId: job.organizationId } },
+    select: { config: true, status: true, campaign: { select: { status: true } } },
+  });
+  if (!run) throw new Error("PARENT_RUN_NOT_FOUND");
+  if (run.status !== "WAITING" || run.campaign.status !== "ACTIVE") throw new Error("PARENT_RUN_INACTIVE");
+  const limit = campaignConfigSchema.parse(run.config).maxAiCalls;
+  const reserved = await prisma.automationRun.updateMany({
+    where: { id: job.automationRunId, status: "WAITING", aiCalls: { lt: limit }, campaign: { organizationId: job.organizationId, status: "ACTIVE" } },
+    data: { aiCalls: { increment: 1 } },
+  });
+  if (!reserved.count) throw new Error("AI_BUDGET_EXHAUSTED");
 }
 
 export async function executeStructuredAgent<TInput, TOutput>(
@@ -46,7 +65,8 @@ export async function executeStructuredAgent<TInput, TOutput>(
 
   try {
     let output: TOutput;
-    if (env.AI_PROVIDER === "nvidia" && env.NVIDIA_API_KEY) {
+    if (!spec.forceFallback && env.AI_PROVIDER === "nvidia" && env.NVIDIA_API_KEY) {
+      await reserveParentAiCall(job);
       model = env.NVIDIA_MODEL;
       const response = await fetch(`${env.NVIDIA_BASE_URL}/chat/completions`, {
         method: "POST",
