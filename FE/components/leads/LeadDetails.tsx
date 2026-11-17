@@ -11,6 +11,7 @@ import { OutreachComposer } from "./OutreachComposer";
 import { LeadAgentPanel } from "@/components/agents/LeadAgentPanel";
 import { CallWorkspace } from "./CallWorkspace";
 import { ContactFinder } from "./ContactFinder";
+import { OnlinePresenceScout } from "@/components/agents/OnlinePresenceScout";
 
 export function LeadDetails({ lead }: { lead: Lead }) {
   return (
@@ -51,6 +52,7 @@ export function LeadDetails({ lead }: { lead: Lead }) {
         </CardContent>
       </Card>
 
+      <OnlinePresenceScout lead={lead} />
       <ReviewsList reviews={lead.reviews || []} />
       <ContactFinder lead={lead} />
       <LeadAgentPanel lead={lead} />

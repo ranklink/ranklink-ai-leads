@@ -6,7 +6,6 @@ import { Bot, Search, Settings2 } from "lucide-react";
 import { ToastProvider } from "@/components/ui/toast";
 import { ThemeProvider } from "@/components/theme-provider";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { AuthGate } from "@/components/auth/AuthGate";
 
 export const metadata: Metadata = {
   title: "Leado | AI lead operations",
@@ -48,10 +47,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <ThemeProvider>
           <QueryProvider>
             <ToastProvider>
-              <AuthGate>
-                <Navbar />
-                <main className="max-w-7xl mx-auto px-4 py-6">{children}</main>
-              </AuthGate>
+              <Navbar />
+              <main className="max-w-7xl mx-auto px-4 py-6">{children}</main>
             </ToastProvider>
           </QueryProvider>
         </ThemeProvider>

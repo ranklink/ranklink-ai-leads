@@ -2,7 +2,6 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { apiRequest, type TelegramLinkCode, type TelegramStatus } from "@/services/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,7 +11,6 @@ type ApiResult<T> = { success: boolean; data: T };
 
 export default function SettingsPage() {
   const queryClient = useQueryClient();
-  const router = useRouter();
   const [nvidiaApiKey, setNvidiaApiKey] = useState("");
   const [providerKeyNotice, setProviderKeyNotice] = useState<string | null>(null);
   const outreach = useQuery({ queryKey: ["automation-configuration"], queryFn: automationApi.configuration });
@@ -21,9 +19,6 @@ export default function SettingsPage() {
     mutationFn: () => apiRequest<ApiResult<{ configured: boolean; provider: string; restartRequired: boolean }>>("/settings/ai-provider/nvidia", { method: "PUT", body: JSON.stringify({ apiKey: nvidiaApiKey }) }),
     onSuccess: async () => { setNvidiaApiKey(""); setProviderKeyNotice("Key saved to the backend environment. Restart the backend and worker to enable NVIDIA agents."); await queryClient.invalidateQueries({ queryKey: ["nvidia-key-status"] }); },
   });
-  const authStatus = useQuery({ queryKey: ["auth-status"], queryFn: () => apiRequest<ApiResult<{ required: boolean }>>("/auth/status").then(result => result.data) });
-  const authSession = useQuery({ queryKey: ["auth-session"], queryFn: () => apiRequest<ApiResult<{ user: { email: string; role: string } | null }>>("/auth/me").then(result => result.data), enabled: authStatus.data?.required ?? false, retry: false });
-  const signOut = useMutation({ mutationFn: () => apiRequest("/auth/logout", { method: "POST" }), onSuccess: async () => { await queryClient.clear(); router.replace("/login"); } });
   const telegram = useQuery({ queryKey: ["telegram-status"], queryFn: () => apiRequest<ApiResult<TelegramStatus>>("/telegram/status").then((r) => r.data) });
   const linkCode = useMutation({
     mutationFn: () => apiRequest<ApiResult<TelegramLinkCode>>("/telegram/link-code", { method: "POST" }).then((r) => r.data),
@@ -36,10 +31,9 @@ export default function SettingsPage() {
     <div className="space-y-6 max-w-2xl">
       <h1 className="text-2xl font-bold">Settings</h1>
       <Card>
-        <CardHeader><CardTitle>Workspace access</CardTitle></CardHeader>
+        <CardHeader><CardTitle>Shared workspace</CardTitle></CardHeader>
         <CardContent className="space-y-3 text-sm">
-          <p>{authStatus.data?.required ? `Sign-in is required${authSession.data?.user ? ` for ${authSession.data.user.email} (${authSession.data.user.role})` : ""}.` : "Local development is using the shared anonymous workspace."}</p>
-          {authStatus.data?.required ? <Button variant="outline" onClick={() => signOut.mutate()} disabled={signOut.isPending}>{signOut.isPending ? "Signing out…" : "Sign out"}</Button> : <div className="space-y-2 text-muted-foreground"><p>To enable separate user sessions, set <code>AUTH_REQUIRED=true</code> in <code>BE/.env</code>, restart the backend, then create accounts with <code>npm run auth:create-user</code>. The command requires an explicit organization ID or a new workspace name; public signup is disabled.</p><p>Each account is scoped to its assigned organization. Use a separate workspace when a user should not see existing lead records.</p></div>}
+          <p className="text-muted-foreground">Sign-in is disabled. Anyone with access to this deployment shares the same workspace and can view its lead data.</p>
         </CardContent>
       </Card>
       <Card>

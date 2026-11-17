@@ -92,7 +92,7 @@ The Telegram bot supports secure account linking and `/find <business type> | <c
    ```
 
    The API registers the Telegram webhook at startup when all webhook settings are present. With webhook settings empty, the worker uses long polling. Keep the worker running to process incoming commands.
-4. Sign in to LocalLeads, open **Settings → Telegram assistant**, generate a one-time code, and send `/link <code>` to your bot. The code expires after ten minutes.
+4. Open **Settings → Telegram assistant**, generate a one-time code, and send `/link <code>` to your bot. The code expires after ten minutes.
 5. Try `/find dentists | Pune` or `/help` in the linked Telegram chat.
 
 Each organization can connect one Telegram chat. Only the Telegram account that linked the chat can use search commands. Disconnect it from Settings. A public HTTPS API endpoint is required for Telegram webhooks.
