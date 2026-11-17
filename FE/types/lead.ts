@@ -11,6 +11,17 @@ export interface Review {
   publishedAt: string | null;
 }
 
+export interface LeadContact {
+  id: string;
+  name: string | null;
+  email: string;
+  role: string | null;
+  source: string;
+  confidence: number;
+  verificationStatus: string | null;
+  updatedAt: string;
+}
+
 export interface Lead {
   id: string;
   placeId: string;
@@ -32,6 +43,7 @@ export interface Lead {
   opportunitySummary: string | null;
   opportunities?: Opportunity[];
   reviews?: Review[];
+  contacts?: LeadContact[];
   createdAt: string;
   updatedAt: string;
 }

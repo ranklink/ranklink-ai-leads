@@ -58,6 +58,8 @@ HUNTER_EMAIL_ACCOUNT_ID=your_hunter_email_account_id
 OUTREACH_ENABLED=true
 ```
 
+To find company contact details, configure `HUNTER_API_KEY` in `BE/.env`, restart the backend, open a lead with a website, and choose **Find contacts**. The backend searches Hunter by the website domain and saves matching professional email addresses, names, roles, confidence, and verification status to that lead. This uses your Hunter API plan. A mailbox ID and `OUTREACH_ENABLED=true` are not needed for contact search; those settings only apply to sending email.
+
 Create campaigns in `DRAFT_ONLY` mode first. `AUTO_SEND` requires outbound configuration, selects only contacts that meet the campaign confidence and verification rules, enforces the daily send limit, records idempotent Hunter events, and can schedule one opt-in follow-up.
 
 Mock mode (no Google key):

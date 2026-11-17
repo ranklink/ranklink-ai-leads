@@ -21,6 +21,7 @@ function Navbar() {
         <div className="agent-nav-links">
           <Link href="/" className="agent-nav-link">Workspace</Link>
           <Link href="/automations" className="agent-nav-link">Agent runs</Link>
+          <Link href="/providers" className="agent-nav-link">Data providers</Link>
           <Link href="/campaigns" className="agent-nav-link">Campaigns</Link>
           <Link href="/leads" className="agent-nav-link">Leads</Link>
           <Link href="/leads/search" className="agent-nav-link agent-nav-search"><Search size={14} /> Find leads</Link>

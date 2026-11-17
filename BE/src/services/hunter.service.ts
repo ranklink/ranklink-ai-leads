@@ -5,10 +5,16 @@ interface HunterResponse<T> { data?: T; errors?: Array<{ details?: string }> }
 
 async function hunterRequest<T>(path: string, init?: RequestInit): Promise<T> {
   if (!env.HUNTER_API_KEY) throw new ApiError(503, "Hunter is not configured. Add HUNTER_API_KEY to the backend environment.");
-  const response = await fetch(`${env.HUNTER_API_BASE_URL}${path}`, {
-    ...init,
-    headers: { "Content-Type": "application/json", "X-API-KEY": env.HUNTER_API_KEY, ...(init?.headers || {}) },
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${env.HUNTER_API_BASE_URL}${path}`, {
+      ...init,
+      signal: init?.signal ?? AbortSignal.timeout(12_000),
+      headers: { "Content-Type": "application/json", "X-API-KEY": env.HUNTER_API_KEY, ...(init?.headers || {}) },
+    });
+  } catch {
+    throw new ApiError(502, "Could not reach Hunter. Please try again shortly.");
+  }
   const payload = await response.json().catch(() => ({})) as HunterResponse<T>;
   if (!response.ok) throw new ApiError(response.status >= 500 ? 502 : response.status, payload.errors?.[0]?.details || "Hunter request failed");
   return payload.data as T;

@@ -1,4 +1,5 @@
 import { API_URL, apiFetch as fetch } from "./api";
+import type { Lead } from "@/types/lead";
 
 export interface SearchLeadsPayload {
   keyword: string;
@@ -36,6 +37,18 @@ export async function getLeadById(id: string) {
   const data = await res.json();
   if (!res.ok) throw new Error(data.message || "Lead not found");
   return data;
+}
+
+export async function enrichLeadContacts(id: string) {
+  const res = await fetch(`${API_URL}/leads/${encodeURIComponent(id)}/contacts/enrich`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({}),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.message || "Could not find company contacts");
+  return data.data as { domain: string; found: number; contacts: NonNullable<Lead["contacts"]> };
 }
 
 export async function getEmailPreview(id: string, payload: { recipientEmail?: string; recipientName?: string }) {

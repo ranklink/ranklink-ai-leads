@@ -89,7 +89,10 @@ export class LeadRepository {
   async findById(id: string) {
     return prisma.lead.findUnique({
       where: { id, organizationId: currentOrganization() },
-      include: { reviews: { orderBy: { createdAt: "desc" } } },
+      include: {
+        reviews: { orderBy: { createdAt: "desc" } },
+        contacts: { orderBy: [{ confidence: "desc" }, { updatedAt: "desc" }], take: 50 },
+      },
     });
   }
 
